@@ -2,6 +2,7 @@
 
 pub mod command;
 pub mod discovery;
+pub mod firmware;
 pub mod frame;
 pub mod link;
 #[cfg(feature = "logging")]

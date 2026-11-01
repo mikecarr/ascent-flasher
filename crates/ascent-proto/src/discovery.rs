@@ -19,9 +19,14 @@ pub struct FoundDevice {
 
 impl FoundDevice {
     pub fn is_flashable(&self) -> bool {
-        let n = self.info.device_name.to_ascii_lowercase();
-        n == "ascent_lite" || n == "ascent_lite_plus"
+        is_flashable_name(&self.info.device_name)
     }
+}
+
+/// Whether a device name (case-insensitive) is a flashable Ascent model.
+pub fn is_flashable_name(device_name: &str) -> bool {
+    let n = device_name.to_ascii_lowercase();
+    n == "ascent_lite" || n == "ascent_lite_plus"
 }
 
 /// Probe every candidate port with FIND_DEVICE only, closing each afterwards.
