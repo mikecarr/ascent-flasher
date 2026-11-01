@@ -6,7 +6,7 @@ use crate::session::{AckTiming, Session, SessionError};
 
 /// USB vendor IDs that may be an Ascent device.
 pub fn is_candidate(vid: u16) -> bool {
-    matches!(vid, 0x1D6B | 0x1D74 | 0x1D7B | 0x1D80 | 0x1D84)
+    matches!(vid, 0x1D6B..=0x1D7B | 0x1D80..=0x1D84)
 }
 
 #[derive(Clone, Debug, PartialEq)]
