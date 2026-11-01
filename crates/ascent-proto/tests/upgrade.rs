@@ -503,10 +503,18 @@ fn final_reconnect_failure_skips_recovery() {
     // the window a (wrong) recovery reconnect would still be searching.
     dev.self_reboot_offline_for = Some(Duration::from_millis(700));
     let r = run_with(dev, &fw, |_, _| {});
+    // The write reported 100 %: not "failed", but an unknown-style result
+    // (final fix wave R11 #4), with no recovery reboot.
     match &r.result {
-        Err(UpgradeError::Failed { cause, recovered }) => {
-            assert!(!*recovered);
-            assert!(matches!(**cause, UpgradeError::Reconnect), "{cause:?}");
+        Err(e @ UpgradeError::NotBackAfterWrite) => {
+            assert_eq!(
+                e.to_string(),
+                "the write reported 100%, but the device didn't come back after restarting"
+            );
+            assert_eq!(
+                e.recovery_hint(),
+                Some("Power-cycle it (unplug USB and battery), then check the version with `ascent-flash info` (or reopen the app).")
+            );
         }
         other => panic!("unexpected {other:?}"),
     }

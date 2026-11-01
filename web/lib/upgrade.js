@@ -17,6 +17,8 @@
 // - The whole post-lock phase (SENDFILE_END, status polls and reconnects) is
 //   bounded by the model's writing limit. When its result can't be told, the
 //   run ends with kind "outcomeUnknown", never a reboot.
+//   If the write reported 100 % and the device doesn't come back from its own
+//   restart, the run ends with kind "notBackAfterWrite" (also no reboot).
 // - The device must still be the one the user confirmed ("deviceChanged");
 //   this is checked before anything beyond FIND_DEVICE is sent.
 // - Reconnects only ever use connector.list(): the user is never asked to
@@ -38,6 +40,7 @@ export const MAX_CHUNK = 1_048_576;
 
 const RECOVERY_HINT = "Power-cycle the VTX (unplug USB and battery). If it doesn't return to normal, recover it with the Caddx Windows tool.";
 const OUTCOME_UNKNOWN_HINT = "Leave it powered for a minute, then press Info to check which version it reports. If it doesn't answer, power-cycle it (unplug USB and battery).";
+const NOT_BACK_HINT = "Power-cycle it (unplug USB and battery), then press Info to check which version it reports.";
 const EMPTY = new Uint8Array(0);
 
 export const Phase = Object.freeze({
@@ -117,6 +120,8 @@ function errorMessage(kind, f) {
       return "Unplug the other Ascent unit first — two units with the same USB ID are connected, so the flasher can't tell them apart after the reboot.";
     case "outcomeUnknown":
       return `flash result unknown — the device now reports ${f.firmware}`;
+    case "notBackAfterWrite":
+      return "the write reported 100%, but the device didn't come back after restarting";
     case "fileTooLarge":
       return `firmware file is too large (${f.size} bytes)`;
     case "failed":
@@ -130,6 +135,7 @@ function errorMessage(kind, f) {
  * kinds: session {cause, sessionKind: "io"|"timeout"|"payload"}, device {code},
  * transferRejected {detail}, cancelled {recovered}, cancelledUnchanged,
  * reconnect, statusPollLimit, deviceChanged, twoUnits, outcomeUnknown {firmware},
+ * notBackAfterWrite (100 % reported, then not back within the reconnect timeout),
  * fileTooLarge {size}, failed {cause: UpgradeError, recovered}.
  */
 export class UpgradeError extends Error {
@@ -144,6 +150,7 @@ export class UpgradeError extends Error {
   get hint() {
     if ((this.kind === "cancelled" || this.kind === "failed") && !this.recovered) return RECOVERY_HINT;
     if (this.kind === "outcomeUnknown") return OUTCOME_UNKNOWN_HINT;
+    if (this.kind === "notBackAfterWrite") return NOT_BACK_HINT;
     return null;
   }
 }
@@ -565,7 +572,14 @@ class Upgrade {
     await this.dropSession();
     await this.clock.sleep(this.opts.reopenDelayMs);
     this.phase(Phase.verifying);
-    const info = await this.reconnect(0);
+    let info;
+    try {
+      info = await this.reconnect(0);
+    } catch (e) {
+      if (!(e instanceof UpgradeError && e.kind === "reconnect")) throw e;
+      this.log("warn: device not back after the write reported 100%");
+      throw new UpgradeError("notBackAfterWrite");
+    }
     this.log(`upgrade complete: ${info.firmware} on ${this.port.id}`);
     return { port: this.port, info };
   }
@@ -712,7 +726,7 @@ export async function runUpgrade({
       }
       const e = toUpgradeError(err);
       // Never a reboot: the device may be writing or already done.
-      if (e.kind === "outcomeUnknown") throw e;
+      if (e.kind === "outcomeUnknown" || e.kind === "notBackAfterWrite") throw e;
       if (u.locked && !deviceStoppedWriting(e)) {
         // The device may still be writing flash: never send REBOOT "normal".
         log(`warn: upgrade failed after lock: ${e.message}; no recovery reboot`);

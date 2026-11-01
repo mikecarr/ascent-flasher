@@ -599,6 +599,7 @@ function resultFor(e) {
     case "cancelledUnchanged":
       return { kind: "neutral", title: "Flash cancelled", message, hint: e.hint };
     case "outcomeUnknown":
+    case "notBackAfterWrite":
       return { kind: "warn", title: "Result unknown", message, hint: e.hint };
     case "twoUnits":
       return { kind: "err", title: "Flash not started", message, hint: null };

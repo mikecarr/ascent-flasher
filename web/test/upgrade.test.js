@@ -294,9 +294,10 @@ test("finalReconnectFailureSkipsRecovery", async () => {
   // Back only after the final reconnect (11.5 s + 200 s) has given up, but
   // within the window a (wrong) recovery reconnect would still be searching.
   const r = await run({ selfRebootOfflineForMs: 300_000 }, firmware(10_000));
-  const e = expectError(r, "failed");
-  assert.equal(e.recovered, false);
-  assert.equal(e.cause.kind, "reconnect");
+  // The write reported 100 %: an unknown-style result, never "failed" (R11 #4).
+  const e = expectError(r, "notBackAfterWrite");
+  assert.equal(e.message, "the write reported 100%, but the device didn't come back after restarting");
+  assert.equal(e.hint, "Power-cycle it (unplug USB and battery), then press Info to check which version it reports.");
   onlyCleanReboots(r);
 });
 

@@ -19,6 +19,9 @@
 //! - The whole post-lock phase (SENDFILE_END, status polls and reconnects) is
 //!   bounded by [`UpgradeOptions::writing_timeout`]. When its result can't be
 //!   told, the run ends with [`UpgradeError::OutcomeUnknown`], never a reboot.
+//!   If the write reported 100 % and the device doesn't come back from its
+//!   own restart, the run ends with [`UpgradeError::NotBackAfterWrite`]
+//!   (also no reboot).
 //! - The device must still be the one the user confirmed
 //!   ([`UpgradeError::DeviceChanged`]); this is checked before anything
 //!   beyond FIND_DEVICE is sent.
@@ -43,6 +46,8 @@ pub const MAX_CHUNK: usize = 1_048_576;
 const RECOVERY_HINT: &str = "Power-cycle the VTX (unplug USB and battery). If it doesn't return to normal, recover it with the Caddx Windows tool.";
 
 const OUTCOME_UNKNOWN_HINT: &str = "Check the version with `ascent-flash info` (or reopen the app). If it isn't the new version, flash again.";
+
+const NOT_BACK_HINT: &str = "Power-cycle it (unplug USB and battery), then check the version with `ascent-flash info` (or reopen the app).";
 
 #[derive(Clone, Copy, Debug)]
 pub struct UpgradeOptions {
@@ -171,6 +176,10 @@ pub enum UpgradeError {
     /// went quiet without reporting 100 %, or the writing phase timed out).
     #[error("flash result unknown — the device now reports {firmware}")]
     OutcomeUnknown { firmware: String },
+    /// The write reported 100 %, but the device didn't come back after its
+    /// own restart within the reconnect timeout. No reboot is sent.
+    #[error("the write reported 100%, but the device didn't come back after restarting")]
+    NotBackAfterWrite,
     /// The firmware is too large for the protocol's 32-bit length field.
     #[error("firmware file is too large ({size} bytes)")]
     FileTooLarge { size: u64 },
@@ -226,6 +235,7 @@ impl UpgradeError {
                 recovered: false, ..
             } => Some(RECOVERY_HINT),
             UpgradeError::OutcomeUnknown { .. } => Some(OUTCOME_UNKNOWN_HINT),
+            UpgradeError::NotBackAfterWrite => Some(NOT_BACK_HINT),
             _ => None,
         }
     }
@@ -624,7 +634,10 @@ impl Upgrade<'_> {
         self.session = None;
         std::thread::sleep(self.opts.reopen_delay);
         self.phase(Phase::Verifying);
-        let info = self.reconnect(Duration::ZERO)?;
+        let info = self.reconnect(Duration::ZERO).map_err(|e| {
+            tracing::warn!("device not back after the write reported 100% ({e})");
+            UpgradeError::NotBackAfterWrite
+        })?;
         tracing::info!(firmware = %info.firmware, port = %self.port.path, "upgrade complete");
         Ok(UpgradeOutcome {
             port: self.port.clone(),
@@ -797,7 +810,9 @@ pub fn run_upgrade(
             let recovered = u.recover(false);
             Err(UpgradeError::Cancelled { recovered })
         }
-        Err(Stop::Error(e @ UpgradeError::OutcomeUnknown { .. })) => {
+        Err(Stop::Error(
+            e @ (UpgradeError::OutcomeUnknown { .. } | UpgradeError::NotBackAfterWrite),
+        )) => {
             // Never a reboot: the device may be writing or already done.
             Err(e)
         }
