@@ -81,7 +81,7 @@ export function decodeHeader(b) {
 
 /**
  * Accumulates received bytes and yields whole frames. Skips garbage up to the
- * next magic; drops frames with a bad CRC or an oversized length.
+ * next magic; drops frames with an oversized length; a bad CRC only warns (frame still delivered).
  */
 export class FrameReader {
   constructor(onWarn = () => {}) {
@@ -118,8 +118,7 @@ export class FrameReader {
       const payload = this.buf.slice(HEADER_LEN, HEADER_LEN + h.length);
       this.buf = this.buf.slice(HEADER_LEN + h.length);
       if (crc32(head, payload) !== h.crc32) {
-        this.onWarn(`CRC mismatch on cmd ${h.command}; frame dropped`);
-        continue;
+        this.onWarn(`CRC mismatch on cmd ${h.command} (ignored)`);
       }
       return { header: h, payload };
     }

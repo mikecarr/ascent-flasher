@@ -137,16 +137,17 @@ test("twoFramesInOnePush", () => {
   assert.equal(r.next(), null);
 });
 
-test("crcMismatchDropsFrame", () => {
+test("crcMismatchWarnsButDelivers", () => {
   const bad = encodeRequest(1, ascii("xx"), 1, 0);
   bad[HEADER_LEN] ^= 0xff;
   const warnings = [];
   const r = new FrameReader((m) => warnings.push(m));
   r.push(bad);
-  r.push(encodeRequest(2, ascii("yy"), 2, 0));
   const f = r.next();
-  assert.equal(f.header.command, 2);
+  assert.equal(f.header.command, 1);
+  assert.equal(f.payload.length, 2);
   assert.equal(warnings.length, 1);
+  assert.equal(r.next(), null);
 });
 
 // ---- payload.rs ----
