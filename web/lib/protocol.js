@@ -84,9 +84,11 @@ export function decodeHeader(b) {
  * next magic; drops frames with an oversized length; a bad CRC only warns (frame still delivered).
  */
 export class FrameReader {
-  constructor(onWarn = () => {}) {
+  /** @param maxLen largest frame accepted, header included (the sim's device side takes 1 MiB chunks) */
+  constructor(onWarn = () => {}, maxLen = MAX_FRAME_LEN) {
     this.buf = new Uint8Array(0);
     this.onWarn = onWarn;
+    this.maxLen = maxLen;
   }
 
   push(chunk) {
@@ -107,7 +109,7 @@ export class FrameReader {
       if (start > 0) this.buf = this.buf.slice(start);
       if (this.buf.length < HEADER_LEN) return null;
       const h = decodeHeader(this.buf);
-      if (HEADER_LEN + h.length > MAX_FRAME_LEN) {
+      if (HEADER_LEN + h.length > this.maxLen) {
         this.onWarn(`dropping frame with oversized length ${h.length}`);
         this.buf = this.buf.slice(1);
         continue;
