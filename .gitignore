@@ -1,0 +1,7 @@
+.superpowers/
+*.zip
+*.exe
+/target/
+node_modules/
+.DS_Store
+reference/
