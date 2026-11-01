@@ -21,6 +21,11 @@
 //   this is checked before anything beyond FIND_DEVICE is sent.
 // - Reconnects only ever use connector.list(): the user is never asked to
 //   re-pick a port mid-flash.
+// - Web Serial reports no USB serial, so two units with the same VID/PID
+//   can't be told apart after a reboot: the run refuses to start ("twoUnits",
+//   nothing sent beyond FIND_DEVICE) while another such port is listed, a
+//   reconnect never opens a port that was another unit's at the start, and it
+//   opens nothing while more than one matching port is listed.
 import { CMD, fileInfo, rebootPayload, statusMessage, decodeFileDataInfo, decodeUpgradeStatus } from "./protocol.js";
 import { modelFor, reopenDelayMs } from "./models.js";
 import { REMOTE_DIR, compareVersions, deviceVersion } from "./firmware.js";
@@ -108,6 +113,8 @@ function errorMessage(kind, f) {
       return "device did not finish writing the firmware in time";
     case "deviceChanged":
       return "the connected device changed since you confirmed — nothing was written";
+    case "twoUnits":
+      return "Unplug the other Ascent unit first — two units with the same USB ID are connected, so the flasher can't tell them apart after the reboot.";
     case "outcomeUnknown":
       return `flash result unknown — the device now reports ${f.firmware}`;
     case "fileTooLarge":
@@ -122,7 +129,7 @@ function errorMessage(kind, f) {
 /**
  * kinds: session {cause, sessionKind: "io"|"timeout"|"payload"}, device {code},
  * transferRejected {detail}, cancelled {recovered}, cancelledUnchanged,
- * reconnect, statusPollLimit, deviceChanged, outcomeUnknown {firmware},
+ * reconnect, statusPollLimit, deviceChanged, twoUnits, outcomeUnknown {firmware},
  * fileTooLarge {size}, failed {cause: UpgradeError, recovered}.
  */
 export class UpgradeError extends Error {
@@ -190,9 +197,13 @@ export function sameDevice(p, like) {
 /**
  * Wait `delayMs`, then repeatedly look for a port matching `like` (its id may
  * have changed), open it and FIND_DEVICE, until it answers or `timeoutMs` has
- * passed (measured after the delay). Only connector.list() is used.
+ * passed (measured after the delay). Only connector.list() is used. Port ids
+ * in `exclude` (other units) are never opened, and nothing is opened while
+ * more than one port matches (the units can't be told apart).
  */
-export async function reconnect({ connector, like, delayMs, timeoutMs, retryMs, clock, sessionOpts = {}, log = () => {} }) {
+export async function reconnect({
+  connector, like, exclude = new Set(), delayMs, timeoutMs, retryMs, clock, sessionOpts = {}, log = () => {},
+}) {
   log = guardLog(log);
   log(`reconnecting (delay ${delayMs} ms, timeout ${timeoutMs} ms)`);
   await clock.sleep(delayMs);
@@ -204,7 +215,12 @@ export async function reconnect({ connector, like, delayMs, timeoutMs, retryMs, 
     } catch (e) {
       log(`port enumeration failed: ${e?.message ?? e}`);
     }
-    for (const port of ports.filter((p) => sameDevice(p, like))) {
+    let matches = ports.filter((p) => sameDevice(p, like) && !exclude.has(p.id));
+    if (matches.length > 1) {
+      log(`warn: ${matches.length} ports match ${hexId(like)} (${matches.map((p) => p.id).join(", ")}); opening none`);
+      matches = [];
+    }
+    for (const port of matches) {
       let link;
       try {
         link = await connector.open(port);
@@ -230,6 +246,8 @@ export async function reconnect({ connector, like, delayMs, timeoutMs, retryMs, 
     await clock.sleep(Math.min(retryMs, left));
   }
 }
+
+const hexId = (p) => [p.vid, p.pid].map((n) => (typeof n === "number" ? n.toString(16).toUpperCase().padStart(4, "0") : "?")).join(":");
 
 /** Chunk size from receiveMaxSize, capped at 1 MiB; <= 0 means "use the cap". */
 const chunkSize = (n) => (n <= 0 ? MAX_CHUNK : Math.min(n, MAX_CHUNK));
@@ -264,6 +282,7 @@ class Upgrade {
     this.lastInfo = null; // most recent FIND_DEVICE reply
     this.locked = false; // SENDFILE_END decided: cancel ignored
     this.deadline = null; // end of the post-lock phase
+    this.others = new Set(); // ids of other same-VID/PID ports at the start
   }
 
   emit(p) {
@@ -306,7 +325,8 @@ class Upgrade {
   async reconnect(delayMs, timeoutMs = this.opts.reconnectTimeoutMs) {
     await this.dropSession();
     const r = await reconnect({
-      connector: this.connector, like: this.port, delayMs, timeoutMs, retryMs: this.opts.reconnectRetryMs,
+      connector: this.connector, like: this.port, exclude: this.others, delayMs, timeoutMs,
+      retryMs: this.opts.reconnectRetryMs,
       clock: this.clock, sessionOpts: this.sessionOpts(), log: this.log,
     });
     this.port = r.port;
@@ -325,10 +345,31 @@ class Upgrade {
     return new UpgradeError("outcomeUnknown", { firmware });
   }
 
+  /**
+   * Refuse while another port with the same VID/PID is listed: after the
+   * reboot the flasher couldn't tell which one is the unit being flashed.
+   */
+  async checkSingleUnit() {
+    let ports;
+    try {
+      ports = await this.connector.list();
+    } catch (e) {
+      throw new LinkGoneError(`port enumeration failed: ${e?.message ?? e}`, { cause: e });
+    }
+    for (const p of ports) {
+      if (p.id !== this.port.id && sameDevice(p, this.port)) this.others.add(p.id);
+    }
+    if (this.others.size > 0) {
+      this.log(`warn: another unit with USB ${hexId(this.port)} is connected (${[...this.others].join(", ")}); refusing to flash`);
+      throw new UpgradeError("twoUnits");
+    }
+  }
+
   /** Step 1: open the port and FIND_DEVICE; check it is the confirmed device. */
   async findFirst() {
     this.phase(Phase.rebooting);
     this.checkpoint();
+    await this.checkSingleUnit();
     let link;
     try {
       link = await this.connector.open(this.port);
@@ -348,6 +389,8 @@ class Upgrade {
     this.preVersion = deviceVersion(info.firmware);
     this.lastInfo = info;
     this.checkpoint();
+    // Again right before REBOOT "clean": a unit plugged in meanwhile.
+    await this.checkSingleUnit();
   }
 
   /** Steps 2-4: REBOOT "clean" (no ack), drop the link, reconnect. */

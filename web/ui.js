@@ -600,6 +600,8 @@ function resultFor(e) {
       return { kind: "neutral", title: "Flash cancelled", message, hint: e.hint };
     case "outcomeUnknown":
       return { kind: "warn", title: "Result unknown", message, hint: e.hint };
+    case "twoUnits":
+      return { kind: "err", title: "Flash not started", message, hint: null };
     default:
       return { kind: "err", title: "Flash failed", message, hint: e.hint };
   }

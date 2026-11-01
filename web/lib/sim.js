@@ -13,7 +13,11 @@
 // rebootMovesTo, offlineForMs, unplugAfterDataChunks, ignoreUntilFindDevice,
 // selfRebootOfflineForMs, ignoredRebootModes, breakLinkAfterDataChunks,
 // silentSelfRebootAtPoll, firmwareAfterSelfReboot, statusSilentAfterSelfReboot;
-// web-only: busyOpens (that many opens fail with PortBusyError).
+// web-only: busyOpens (that many opens fail with PortBusyError),
+// newPortIdEachReboot (every reboot lists the port under a fresh id, as
+// Chrome gives a new SerialPort object each time; `reboots` counts them).
+// SimConnector.list() reports no USB serial (Web Serial has none); SimBus
+// puts several simulated units behind one connector.
 import {
   CMD, HEADER_LEN, encodeAck, FrameReader, encodeDeviceInfo, encodeFileDataInfo, encodeUpgradeStatus,
 } from "./protocol.js";
@@ -54,6 +58,7 @@ export class SimDevice {
     this.firmwareAfterSelfReboot = null;
     this.statusSilentAfterSelfReboot = false;
     this.busyOpens = 0;
+    this.newPortIdEachReboot = false;
     Object.assign(this, rest);
     this.statusScript = [...this.statusScript];
 
@@ -70,6 +75,8 @@ export class SimDevice {
     this.offlineUntil = null;
     this.gone = false;
     this.epoch = 0;
+    this.reboots = 0;
+    this.basePath = "";
   }
 
   online() {
@@ -80,7 +87,9 @@ export class SimDevice {
   goOffline() {
     this.epoch += 1;
     this.offlineUntil = this.clock.now() + this.offlineForMs;
+    this.reboots += 1;
     if (this.rebootMovesTo) this.path = this.rebootMovesTo;
+    if (this.newPortIdEachReboot) this.path = `${this.basePath}#${this.reboots}`;
   }
 
   /** The device reboots itself after writing the firmware. */
@@ -164,6 +173,7 @@ export class SimConnector {
   constructor(clock, id, vid, pid, devOpts = {}) {
     this.device = devOpts instanceof SimDevice ? devOpts : new SimDevice(clock, devOpts);
     this.device.path = id;
+    this.device.basePath = id;
     this.clock = clock;
     this.vid = vid;
     this.pid = pid;
@@ -172,7 +182,8 @@ export class SimConnector {
   async list() {
     const d = this.device;
     if (!d.online()) return [];
-    return [{ id: d.path, vid: this.vid, pid: this.pid, serial: d.info.serialNumber }];
+    // No `serial`: Web Serial doesn't report the USB serial number.
+    return [{ id: d.path, vid: this.vid, pid: this.pid }];
   }
 
   async open(port) {
@@ -183,6 +194,30 @@ export class SimConnector {
       throw new PortBusyError("The VTX is in use by another app or tab — close it and try again");
     }
     return new SimLink(d, this.clock);
+  }
+}
+
+/** Several simulated units behind one connector (e.g. two identical VTXs). */
+export class SimBus {
+  constructor(...connectors) {
+    this.connectors = connectors;
+  }
+
+  /** Plug in another unit. */
+  add(connector) {
+    this.connectors.push(connector);
+  }
+
+  async list() {
+    const out = [];
+    for (const c of this.connectors) out.push(...(await c.list()));
+    return out;
+  }
+
+  async open(port) {
+    const c = this.connectors.find((x) => x.device.path === port.id);
+    if (!c) throw new LinkGoneError("no such port");
+    return c.open(port);
   }
 }
 

@@ -5,9 +5,9 @@ import { VirtualClock } from "../lib/clock.js";
 import { reopenDelayMs, modelFor } from "../lib/models.js";
 import { fileVersion } from "../lib/firmware.js";
 import { md5Hex } from "../lib/md5.js";
-import { SimConnector } from "../lib/sim.js";
+import { SimConnector, SimBus } from "../lib/sim.js";
 import {
-  runUpgrade, upgradeOptions, CancelToken, UpgradeError, progressText, Phase,
+  runUpgrade, upgradeOptions, CancelToken, UpgradeError, progressText, Phase, reconnect,
 } from "../lib/upgrade.js";
 
 const PATH = "/dev/cu.usbmodem1101";
@@ -503,6 +503,162 @@ test("throwing onProgress and log together still complete the flash", async () =
     hook: () => { throw new Error("ui broke"); },
     log: () => { throw new Error("log broke"); },
   });
+  expectOk(r);
+  onlyCleanReboots(r);
+});
+
+// ---- final fix wave: two identical units (R10) ----
+
+const PATH_B = "/dev/cu.usbmodem2101";
+
+/** Unit A (the one being flashed) and unit B (same VID/PID) on one bus. */
+function twoUnits(clock, aOpts = {}, bOpts = {}) {
+  const a = new SimConnector(clock, PATH, VID, PID, aOpts);
+  const b = new SimConnector(clock, PATH_B, VID, PID, { info: { serialNumber: "SIM0002" }, ...bOpts });
+  return { a, b };
+}
+
+test("sim list omits the USB serial, like Web Serial", async () => {
+  const conn = new SimConnector(new VirtualClock(), PATH, VID, PID);
+  const [port] = await conn.list();
+  assert.deepEqual(Object.keys(port).sort(), ["id", "pid", "vid"]);
+});
+
+test("two identical units connected: refused, nothing but FIND_DEVICE sent to either", async () => {
+  const clock = new VirtualClock();
+  const { a, b } = twoUnits(clock);
+  const bus = new SimBus(a, b);
+  const port = (await bus.list()).find((p) => p.id === PATH);
+  let error = null;
+  try {
+    await runUpgrade({
+      connector: bus, port, firmware: firmware(10_000), expected: a.device.info.firmware,
+      model: modelFor(a.device.info.deviceName), clock,
+    });
+  } catch (e) {
+    error = e;
+  }
+  assert.ok(error instanceof UpgradeError, String(error));
+  assert.equal(error.kind, "twoUnits");
+  assert.equal(
+    error.message,
+    "Unplug the other Ascent unit first — two units with the same USB ID are connected, so the flasher can't tell them apart after the reboot.",
+  );
+  assert.equal(error.hint, null);
+  for (const unit of [a, b]) {
+    assert.ok(unit.device.log.every((h) => h.command === 60), `${unit.device.log.map((h) => h.command)}`);
+  }
+});
+
+test("a second identical unit plugged in before REBOOT clean is refused the same way", async () => {
+  const clock = new VirtualClock();
+  const { a, b } = twoUnits(clock);
+  const bus = new SimBus(a);
+  const [port] = await bus.list();
+  // Plugged in right after the first open (while FIND_DEVICE is in flight).
+  const plugging = {
+    list: () => bus.list(),
+    open: async (p) => {
+      const link = await bus.open(p);
+      if (!bus.connectors.includes(b)) bus.add(b);
+      return link;
+    },
+  };
+  let error = null;
+  try {
+    await runUpgrade({
+      connector: plugging, port, firmware: firmware(10_000), expected: a.device.info.firmware,
+      model: modelFor(a.device.info.deviceName), clock,
+    });
+  } catch (e) {
+    error = e;
+  }
+  assert.equal(error?.kind, "twoUnits", String(error));
+  assert.deepEqual(a.device.log.map((h) => h.command), [60]);
+  assert.deepEqual(b.device.log, []);
+});
+
+test("a second identical unit plugged in after the reboot is never opened by reconnect", async () => {
+  const clock = new VirtualClock();
+  const { a, b } = twoUnits(clock, { newPortIdEachReboot: true });
+  const bus = new SimBus(a);
+  const [port] = await bus.list();
+  const opened = [];
+  const watched = {
+    list: () => bus.list(),
+    open: (p) => {
+      opened.push(p.id);
+      return bus.open(p);
+    },
+  };
+  let error = null;
+  try {
+    await runUpgrade({
+      connector: watched, port, firmware: firmware(10_000), expected: a.device.info.firmware,
+      model: modelFor(a.device.info.deviceName), clock,
+      onProgress: (p) => { if (p.type === "phase" && p.phase === Phase.reconnecting) bus.add(b); },
+    });
+  } catch (e) {
+    error = e;
+  }
+  assert.ok(error instanceof UpgradeError, String(error));
+  assert.ok(!opened.includes(PATH_B), `${opened}`);
+  assert.deepEqual(b.device.log, []);
+  // Unit A got REBOOT clean only; nothing of the file went anywhere.
+  assert.ok(!a.device.log.some((h) => h.command === 114 || h.command === 116), `${a.device.log.map((h) => h.command)}`);
+});
+
+test("reconnect skips excluded port ids (other units present at start)", async () => {
+  const clock = new VirtualClock();
+  const { a, b } = twoUnits(clock);
+  const bus = new SimBus(b, a); // B listed first
+  const r = await reconnect({
+    connector: bus, like: { id: PATH, vid: VID, pid: PID }, exclude: new Set([PATH_B]),
+    delayMs: 0, timeoutMs: 5000, retryMs: 1000, clock,
+  });
+  assert.equal(r.port.id, PATH);
+  assert.deepEqual(b.device.log, []);
+  await r.session.close();
+});
+
+// ---- final fix wave: a fresh port id on every reboot (R11 #7) ----
+
+test("fresh port id on every reboot: happy path", async () => {
+  const r = await run({ newPortIdEachReboot: true }, firmware(10_000));
+  const outcome = expectOk(r);
+  assert.notEqual(outcome.port.id, PATH);
+  assert.deepEqual(commands(r), [60, 3, 60, 114, 115, 116, 116, 116, 117, 118, 60]);
+  onlyCleanReboots(r);
+  // Two reboots (clean, self-reboot): two fresh ids.
+  assert.equal(r.conn.device.reboots, 2);
+});
+
+test("fresh port id on every reboot: cancel recovers", async () => {
+  const r = await run({ newPortIdEachReboot: true }, firmware(10_000), {
+    hook: (p, c) => { if (p.type === "sent") c.cancel(); },
+  });
+  const e = expectError(r, "cancelled");
+  assert.equal(e.recovered, true);
+  assert.ok(hasNormal(r));
+  assert.ok(!commands(r).includes(117));
+});
+
+test("fresh port id on every reboot: missed self-reboot reconnects after the lock", async () => {
+  const r = await run(
+    {
+      newPortIdEachReboot: true, statusScript: [progress(40)], silentSelfRebootAtPoll: 2,
+      firmwareAfterSelfReboot: "Ascent_Lite_Plus_1_3_0",
+    },
+    firmwareV130(10_000),
+  );
+  const outcome = expectOk(r);
+  assert.equal(outcome.firmware, "Ascent_Lite_Plus_1_3_0");
+  assert.notEqual(outcome.port.id, PATH);
+  onlyCleanReboots(r);
+});
+
+test("fresh port id on every reboot: unanswered poll reconnects without reboot", async () => {
+  const r = await run({ newPortIdEachReboot: true, ignoreUntilFindDevice: 118 }, firmware(10_000));
   expectOk(r);
   onlyCleanReboots(r);
 });
