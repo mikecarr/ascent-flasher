@@ -38,7 +38,7 @@ None of these are needed to talk to the device.
   - The consumer "C" build only accepts `ascent_lite`, `ascent_lite_plus`, `ascent_vrx`, `ascent_vrx_pro`, `caddxsimgm`, `caddx_gm3`, `caddx_gm1`. This is UI gating, not something the protocol enforces.
 - After a reboot, the tool waits a per-VID delay before reopening the port (`GD.cs`): 8000 ms by default, 9500–12000 ms for VRX/GT Pro, 6000 ms for the gimbal. The port name can change, so it re-finds the port by VID/PID.
 
-### Observed on real hardware (2026-10-31, user's "Ascent Lite+" VTX, macOS)
+### Observed on real hardware (2026-10-31, user's **Ascent Lite VTX** (not the Lite+), macOS)
 
 `ascent-flash info` output:
 
@@ -243,3 +243,4 @@ Our tool doesn't support the `Ascent_R_Sky_` multi-part flow; it would need its 
 - **Device OS:** Linux. Its U-Boot config is `console=ttyAMA0,115200`.
 - **NAND layout:** A/B (dual-bank), with `fpvbsel` selecting the bank: `512K(boot),512K(env),1M(sel),4M(kernel0),4M(kernel1),6M(factory),16M(rootfs0),16M(rootfs1),32M(usrdata0),32M(usrdata1)`. **`factory` probably holds per-unit RF calibration. Never erase it.**
 - **V18.21.10 (2026-08):** the package ships the same Windows installer (PC Tool 2.2.9, byte-identical to the one analyzed here), so the upgrade protocol is unchanged. Release notes: it adds Lite+ air-unit support, allows updates on USB power alone, and stops daemon logging to NAND (cited as a possible bricking cause). `Ascent_H_Sky_18_21_10.img` is 15.6 MB, MD5 `b78373e21b0131bd0c4864269ba1025b`, and has the same NAND layout as 17.5.8.
+- **One air-unit image for both models:** V18.21.10 ships a single air-unit image (`Ascent_H_Sky_*`) and lists Lite+ support as new. The likely inference is that this one image covers both the Lite and the Lite+. That's unconfirmed: check the Lite+'s `info` output (`devicename`, `firmwareInfo`, VID:PID) before flashing it. All hardware results above come from the **Lite**.
