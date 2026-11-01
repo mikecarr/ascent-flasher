@@ -133,6 +133,11 @@ Log (same page session, after the Lite+): [hardware-logs/2026-11-01-lite-web-fla
 - Its clean mode now keeps a real cpu temp (58); the 0 °C seen in the October cancel test was on 17.5.8.
 - The Lite stays unconfirmed in `web/lib/models.js` until the same flash passes on Windows (the spec requires macOS and Windows before the first public deploy).
 
+### Lite flashed through the web page on Windows (2026-11-01)
+
+- The user ran the same flash from a local copy of the page on Windows and reported that it worked. The session log and the USB driver details weren't saved.
+- Result: the Lite is marked `confirmed` in `web/lib/models.js`. All three supported models are now confirmed, so the public page can flash each of them.
+
 ## 3. Ascent ("AR"/Artosyn) serial protocol — the main one
 
 Used by all Ascent goggles, VRX, VTX and the GM V2 gimbals.

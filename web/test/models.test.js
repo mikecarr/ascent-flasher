@@ -6,7 +6,7 @@ import {
 
 test("model table", () => {
   assert.deepEqual(MODELS, [
-    { name: "ascent_lite", label: "Ascent Lite", filePrefix: "H_Sky", power: "usb", writingTimeoutMs: 300000, confirmed: false },
+    { name: "ascent_lite", label: "Ascent Lite", filePrefix: "H_Sky", power: "usb", writingTimeoutMs: 300000, confirmed: true },
     { name: "ascent_lite_plus", label: "Ascent Lite+", filePrefix: "H_Sky", power: "usb", writingTimeoutMs: 300000, confirmed: true },
     { name: "ascent_vrx_pro", label: "Ascent VRX Pro", filePrefix: "VRX_Pro", power: "external", writingTimeoutMs: 600000, confirmed: true },
   ]);
@@ -43,11 +43,12 @@ test("reopen delay table and candidate VIDs", () => {
 });
 
 test("unconfirmed model can flash only on localhost", () => {
-  const lite = modelFor("ascent_lite");
-  assert.equal(canFlash(lite, "localhost"), true);
-  assert.equal(canFlash(lite, "127.0.0.1"), true);
-  assert.equal(canFlash(lite, "mikecarr.github.io"), false);
-  assert.equal(canFlash({ ...lite, confirmed: true }, "mikecarr.github.io"), true);
+  // Every shipped model is confirmed now; the gate is for models added later.
+  const unconfirmed = { ...modelFor("ascent_lite"), confirmed: false };
+  assert.equal(canFlash(unconfirmed, "localhost"), true);
+  assert.equal(canFlash(unconfirmed, "127.0.0.1"), true);
+  assert.equal(canFlash(unconfirmed, "mikecarr.github.io"), false);
+  assert.equal(canFlash({ ...unconfirmed, confirmed: true }, "mikecarr.github.io"), true);
   assert.equal(isLocalHost("[::1]"), true);
   assert.equal(isLocalHost("evil-localhost.com"), false);
 });

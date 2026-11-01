@@ -155,11 +155,13 @@ test("preflightRejectsNonAsciiFileName", async () => {
   assert.equal(await kind(preflight(dev, file("Ascent\tH_Sky_17_6_0.img"), H)), "badFileName");
 });
 
-test("unconfirmed model can flash only on localhost (preflight)", async () => {
-  const dev = info("Ascent_lite", FW);
+test("preflight follows canFlash: unknown models never, confirmed models anywhere", async () => {
   const f = file("Ascent_H_Sky_17_6_0.img");
-  assert.equal(await kind(preflight(dev, f, "mikecarr.github.io")), "notFlashable");
-  assert.ok((await preflight(dev, f, "127.0.0.1")).firmware);
+  const other = info("Ascent_vrx", FW); // an Ascent unit that isn't in MODELS
+  assert.equal(await kind(preflight(other, f, "mikecarr.github.io")), "notFlashable");
+  assert.equal(await kind(preflight(other, f, "127.0.0.1")), "notFlashable");
+  const lite = info("Ascent_lite", FW); // confirmed on hardware
+  assert.ok((await preflight(lite, f, "mikecarr.github.io")).firmware);
 });
 
 // Final fix wave R9: spec step 7 / CLI main.rs version check after the restart.
