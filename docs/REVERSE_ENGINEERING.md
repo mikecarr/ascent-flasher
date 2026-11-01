@@ -87,6 +87,26 @@ None of these are needed to talk to the device.
 - **Reconnect after REBOOT "clean" needs no new port pick.** Timeline from sending the reboot: Chrome's `disconnect` event at 2.7 s, `connect` at 7.5 s. After the 11.5 s wait, `navigator.serial.getPorts()` returned the device (a new `SerialPort` object; the permission carried over) and clean-mode FIND_DEVICE answered in 27 ms (`devicename "Ascent"`, firmware unchanged).
 - So a browser flasher can follow the same sequence as the app. The VTX was back on USB about 4 s before the 11.5 s wait ended; a browser version could start probing on the `connect` event instead of waiting the full delay.
 
+### VRX Pro flashed through the web page (2026-11-01, macOS, Chrome 156, 18.21.10 → 18.21.10)
+
+First real flash through the web flasher. Log: [hardware-logs/2026-11-01-vrx-pro-web-flash-macos.txt](hardware-logs/2026-11-01-vrx-pro-web-flash-macos.txt). The VRX Pro was on its own DC supply.
+
+| Step | Observed (times from Flash) |
+|---|---|
+| file check | MD5 of the 179751498-byte image took ~3.9 s on the page's main thread |
+| REBOOT "clean" | back after 14.6 s (12 s wait + 2.6 s) on a **new** SerialPort object, no port pick |
+| clean-mode FIND_DEVICE | **differs from the Lite**: `devicename` stays `Ascent_VRX_pro`, cpu temp stays real (41), hardware string ends `-0.0` instead of `-1.0`, firmware unchanged |
+| SENDFILE_DATA | 172 × 1 MiB chunks in 37.4 s (~4.8 MB/s) |
+| SENDFILE_END | reply in 1.2 s |
+| UPGRADE_STATUS | one reply every ~2 s (the unit takes ~1 s to answer); 0 % → 100 % (status 3) in 66 s, steady ~3.5 %/poll |
+| self-reboot | back 44 s after 100 % on another new SerialPort object; reported `Ascent_VRX_Pro_18_21_10` |
+| total | ~2 min 46 s from Flash to "Flash complete" |
+
+- The 600 s writing limit is ~9× the real write time; 1200 status polls at ~2 s each can't end it early.
+- Port ids changed only at the two real reboots (1 → 2 → 3), not during the file check: confirms the port-identity fix (`c224369`).
+- No REBOOT "normal" was needed, so whether the VRX Pro honours it from clean mode is still untested.
+- Result: the VRX Pro is marked `confirmed` in `web/lib/models.js`.
+
 ## 3. Ascent ("AR"/Artosyn) serial protocol — the main one
 
 Used by all Ascent goggles, VRX, VTX and the GM V2 gimbals.
