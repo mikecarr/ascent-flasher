@@ -62,6 +62,7 @@ h2 { margin: 0; font-size: inherit; }
 .tag.sim { color: var(--warn); border-color: currentColor; }
 
 .notice { margin: 0; padding: 12px 14px; border-radius: 12px; background: var(--warn-soft); color: var(--text); border: 1px solid var(--warn); }
+.notice.disclaimer { font-size: 13.5px; line-height: 1.45; }
 
 .card { background: var(--card); border: 1px solid var(--border); border-radius: 14px; padding: 14px 16px; box-shadow: var(--shadow); }
 .device-top { display: flex; align-items: center; gap: 12px; }
