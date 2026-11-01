@@ -79,7 +79,7 @@ None of these are needed to talk to the device.
 - **Same firmware family:** both report `H_Sky`, so the single `Ascent_H_Sky_*.img` covers the Lite and the Lite+ (confirms the inference in §10).
 - **Same USB ID**, so the same 11.5 s reopen delay applies. The port name depends on the USB serial, so it differs per unit; the tool finds the device by VID/PID.
 - **Seq echo:** yes, as on the Lite.
-- Not flashed yet (it was already on the latest firmware).
+- Flashed later the same day through the web page (same-version 18.21.10); see "Lite+ flashed through the web page" below.
 
 ### Web Serial in Chrome (2026-11-01, Lite+, test page `web/serial-test/`)
 
@@ -106,6 +106,23 @@ First real flash through the web flasher. Log: [hardware-logs/2026-11-01-vrx-pro
 - Port ids changed only at the two real reboots (1 → 2 → 3), not during the file check: confirms the port-identity fix (`c224369`).
 - No REBOOT "normal" was needed, so whether the VRX Pro honours it from clean mode is still untested.
 - Result: the VRX Pro is marked `confirmed` in `web/lib/models.js`.
+
+### Lite+ flashed through the web page (2026-11-01, macOS, Chrome 156, 18.21.10 → 18.21.10)
+
+First flash of the Lite+ by any of our tools. Log (same page session, after the VRX Pro flash): [hardware-logs/2026-11-01-lite-plus-web-flash-macos.txt](hardware-logs/2026-11-01-lite-plus-web-flash-macos.txt).
+
+| Step | Observed (times from Flash) |
+|---|---|
+| file check | while the VRX Pro image was still selected, plugging in the Lite+ re-ran the check and raised `nameMismatch`; choosing the `H_Sky` file cleared it (MD5 of 15.6 MB in ~0.1 s) |
+| REBOOT "clean" | answered at the first try after the 11.5 s wait, on a new SerialPort object |
+| clean-mode FIND_DEVICE | `devicename "Ascent"`, hardware `FPV-Edu-Sky-V0.0-0.0`, empty SDK version, firmware unchanged — like the Lite, **but cpu temp stayed real (49)**, so a 0 °C temperature is not a reliable clean-mode sign |
+| SENDFILE_DATA | 15 × 1 MiB chunks in 3.4 s (~4.7 MB/s) |
+| SENDFILE_END | reply in 0.43 s |
+| UPGRADE_STATUS | one reply per second; 38 → 59 → 79 → 79 → 100 % (status 3) in 5 s — the same steps the Lite showed |
+| self-reboot | back at the first try after the 11.5 s wait, reporting `Ascent_H_Sky_18_21_10` |
+| total | ~32 s from Flash to "Flash complete" |
+
+- Result: the Lite+ is marked `confirmed` in `web/lib/models.js`.
 
 ## 3. Ascent ("AR"/Artosyn) serial protocol — the main one
 
@@ -311,4 +328,4 @@ The cancel is only checked between steps, so it can take up to the 11.5 s reconn
 - **Device OS:** Linux. Its U-Boot config is `console=ttyAMA0,115200`.
 - **NAND layout:** A/B (dual-bank), with `fpvbsel` selecting the bank: `512K(boot),512K(env),1M(sel),4M(kernel0),4M(kernel1),6M(factory),16M(rootfs0),16M(rootfs1),32M(usrdata0),32M(usrdata1)`. **`factory` probably holds per-unit RF calibration. Never erase it.**
 - **V18.21.10 (2026-08):** the package ships the same Windows installer (PC Tool 2.2.9, byte-identical to the one analyzed here), so the upgrade protocol is unchanged. Release notes: it adds Lite+ air-unit support, allows updates on USB power alone, and stops daemon logging to NAND (cited as a possible bricking cause). `Ascent_H_Sky_18_21_10.img` is 15.6 MB, MD5 `b78373e21b0131bd0c4864269ba1025b`, and has the same NAND layout as 17.5.8.
-- **One air-unit image for both models:** V18.21.10 ships a single air-unit image (`Ascent_H_Sky_*`) and lists Lite+ support as new. The likely inference is that this one image covers both the Lite and the Lite+. **Confirmed 2026-11-01:** the Lite+ reports `Ascent_lite_plus` with firmware `Ascent_H_Sky_18_21_10` and the same VID:PID as the Lite (see §2). The flash and cancel results above come from the **Lite**; the Lite+ has only been read so far.
+- **One air-unit image for both models:** V18.21.10 ships a single air-unit image (`Ascent_H_Sky_*`) and lists Lite+ support as new. The likely inference is that this one image covers both the Lite and the Lite+. **Confirmed 2026-11-01:** the Lite+ reports `Ascent_lite_plus` with firmware `Ascent_H_Sky_18_21_10` and the same VID:PID as the Lite (see §2). The Lite+ was then flashed with that same `H_Sky` image through the web page (§2), so the one image is confirmed for both.

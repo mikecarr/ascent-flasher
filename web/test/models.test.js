@@ -7,7 +7,7 @@ import {
 test("model table", () => {
   assert.deepEqual(MODELS, [
     { name: "ascent_lite", label: "Ascent Lite", filePrefix: "H_Sky", power: "usb", writingTimeoutMs: 300000, confirmed: false },
-    { name: "ascent_lite_plus", label: "Ascent Lite+", filePrefix: "H_Sky", power: "usb", writingTimeoutMs: 300000, confirmed: false },
+    { name: "ascent_lite_plus", label: "Ascent Lite+", filePrefix: "H_Sky", power: "usb", writingTimeoutMs: 300000, confirmed: true },
     { name: "ascent_vrx_pro", label: "Ascent VRX Pro", filePrefix: "VRX_Pro", power: "external", writingTimeoutMs: 600000, confirmed: true },
   ]);
 });

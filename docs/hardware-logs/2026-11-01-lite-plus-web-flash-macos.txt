@@ -1,0 +1,123 @@
+Ascent Flasher session log (page loaded 2026-11-01T18:33:34.279Z)
+[    0.002s] page loaded: http://localhost:8766/
+[    0.002s] user agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/156.0.0.0 Safari/537.36
+[    0.002s] Web Serial available
+[   30.056s] connect: picked webserial-1 (USB 1D77:A4A2)
+[   30.307s] learned device seq echo behaviour: echoes seq: true
+[   30.308s] FIND_DEVICE reply: {"receiveMaxSize":1048576,"sdkVersion":"18.21.10","deviceName":"Ascent_VRX_pro","cpuTemp":42,"firmware":"Ascent_VRX_Pro_18_21_10","serialNumber":"0466","hardwareVersion":"Ascent-VRX-Pro-V3.0-1.0","status":0,"detail":"OK"}
+[   30.311s] device: Ascent_VRX_pro Ascent_VRX_Pro_18_21_10 on webserial-1
+[   38.580s] file: Ascent_VRX_Pro_18_21_10.img (179751498 bytes)
+[   42.513s] file check: md5 22bf17ae461a0063ddbac8f45a971f04, version V18.21.10, warnings []
+[   48.423s] flash confirmed: Ascent_VRX_Pro_18_21_10.img → Ascent_VRX_pro Ascent_VRX_Pro_18_21_10 on webserial-1
+[   48.425s] starting upgrade on webserial-1 with Ascent_VRX_Pro_18_21_10.img
+[   48.425s] upgrade phase: rebooting (port webserial-1)
+[   49.317s] learned device seq echo behaviour: echoes seq: true
+[   49.317s] FIND_DEVICE reply: {"receiveMaxSize":1048576,"sdkVersion":"18.21.10","deviceName":"Ascent_VRX_pro","cpuTemp":42,"firmware":"Ascent_VRX_Pro_18_21_10","serialNumber":"0466","hardwareVersion":"Ascent-VRX-Pro-V3.0-1.0","status":0,"detail":"OK"}
+[   49.317s] device found: Ascent_VRX_pro Ascent_VRX_Pro_18_21_10
+[   49.317s] sending REBOOT clean (no ack)
+[   49.321s] upgrade phase: reconnecting (port webserial-1)
+[   49.321s] reconnecting (delay 12000 ms, timeout 200000 ms)
+[   63.896s] learned device seq echo behaviour: echoes seq: true
+[   63.897s] FIND_DEVICE reply: {"receiveMaxSize":1048576,"sdkVersion":"18.21.10","deviceName":"Ascent_VRX_pro","cpuTemp":41,"firmware":"Ascent_VRX_Pro_18_21_10","serialNumber":"0466","hardwareVersion":"Ascent-VRX-Pro-V3.0-0.0","status":0,"detail":"OK"}
+[   63.897s] reconnected on webserial-2
+[   63.897s] device back after clean reboot (receiveMaxSize 1048576, chunk 1048576)
+[   63.897s] upgrade phase: enteringUpgrade (port webserial-2)
+[   64.897s] upgrade phase: startingTransfer (port webserial-2)
+[   64.897s] SENDFILE_START /tmp/pc/Ascent_VRX_Pro_18_21_10.img md5 22bf17ae461a0063ddbac8f45a971f04 len 179751498
+[   65.898s] upgrade phase: sending (port webserial-2)
+[  103.302s] upgrade phase: finishing (port webserial-2)
+[  104.504s] SENDFILE_END sent; cancel is now locked
+[  104.504s] upgrade phase: writing (port webserial-2)
+[  106.505s] upgrade status (poll 1): 0% status 0 
+[  108.506s] upgrade status (poll 2): 0% status 0 
+[  110.507s] upgrade status (poll 3): 1% status 2 
+[  112.507s] upgrade status (poll 4): 4% status 2 
+[  114.508s] upgrade status (poll 5): 8% status 2 
+[  116.508s] upgrade status (poll 6): 11% status 2 
+[  118.509s] upgrade status (poll 7): 15% status 2 
+[  120.510s] upgrade status (poll 8): 18% status 2 
+[  122.510s] upgrade status (poll 9): 18% status 2 
+[  124.511s] upgrade status (poll 10): 19% status 2 
+[  126.511s] upgrade status (poll 11): 23% status 2 
+[  128.512s] upgrade status (poll 12): 26% status 2 
+[  130.512s] upgrade status (poll 13): 30% status 2 
+[  132.513s] upgrade status (poll 14): 33% status 2 
+[  134.514s] upgrade status (poll 15): 37% status 2 
+[  136.514s] upgrade status (poll 16): 41% status 2 
+[  138.515s] upgrade status (poll 17): 44% status 2 
+[  140.516s] upgrade status (poll 18): 48% status 2 
+[  142.516s] upgrade status (poll 19): 51% status 2 
+[  144.517s] upgrade status (poll 20): 55% status 2 
+[  146.517s] upgrade status (poll 21): 58% status 2 
+[  148.518s] upgrade status (poll 22): 62% status 2 
+[  150.518s] upgrade status (poll 23): 65% status 2 
+[  152.519s] upgrade status (poll 24): 69% status 2 
+[  154.519s] upgrade status (poll 25): 73% status 2 
+[  156.520s] upgrade status (poll 26): 76% status 2 
+[  158.521s] upgrade status (poll 27): 79% status 2 
+[  160.521s] upgrade status (poll 28): 83% status 2 
+[  162.522s] upgrade status (poll 29): 87% status 2 
+[  164.522s] upgrade status (poll 30): 90% status 2 
+[  166.523s] upgrade status (poll 31): 94% status 2 
+[  168.523s] upgrade status (poll 32): 97% status 2 
+[  170.524s] upgrade status (poll 33): 100% status 3 
+[  170.525s] upgrade phase: restarting (port webserial-2)
+[  182.530s] upgrade phase: verifying (port webserial-2)
+[  182.530s] reconnecting (delay 0 ms, timeout 200000 ms)
+[  214.385s] learned device seq echo behaviour: echoes seq: true
+[  214.385s] FIND_DEVICE reply: {"receiveMaxSize":1048576,"sdkVersion":"18.21.10","deviceName":"Ascent_VRX_pro","cpuTemp":40,"firmware":"Ascent_VRX_Pro_18_21_10","serialNumber":"0466","hardwareVersion":"Ascent-VRX-Pro-V3.0-1.0","status":0,"detail":"OK"}
+[  214.385s] reconnected on webserial-3
+[  214.385s] upgrade complete: Ascent_VRX_Pro_18_21_10 on webserial-3
+[  214.388s] flash complete: device reports Ascent_VRX_Pro_18_21_10
+[  215.392s] learned device seq echo behaviour: echoes seq: true
+[  215.392s] FIND_DEVICE reply: {"receiveMaxSize":1048576,"sdkVersion":"18.21.10","deviceName":"Ascent_VRX_pro","cpuTemp":40,"firmware":"Ascent_VRX_Pro_18_21_10","serialNumber":"0466","hardwareVersion":"Ascent-VRX-Pro-V3.0-1.0","status":0,"detail":"OK"}
+[  215.397s] device: Ascent_VRX_pro Ascent_VRX_Pro_18_21_10 on webserial-3
+[  219.291s] file check: md5 22bf17ae461a0063ddbac8f45a971f04, version V18.21.10, warnings []
+[  534.594s] device: none
+[  621.306s] learned device seq echo behaviour: echoes seq: true
+[  621.306s] FIND_DEVICE reply: {"receiveMaxSize":1048576,"sdkVersion":"","deviceName":"Ascent_lite_plus","cpuTemp":44,"firmware":"Ascent_H_Sky_18_21_10","serialNumber":"1_0106","hardwareVersion":"FPV-Ascent-Sky-472-V1.3-1.1","status":0,"detail":"OK"}
+[  621.310s] device: Ascent_lite_plus Ascent_H_Sky_18_21_10 on webserial-4
+[  625.281s] file check: md5 22bf17ae461a0063ddbac8f45a971f04, version V18.21.10, warnings [nameMismatch]
+[  625.288s] connect: picked webserial-4 (USB 1D76:0101)
+[  625.394s] learned device seq echo behaviour: echoes seq: true
+[  625.394s] FIND_DEVICE reply: {"receiveMaxSize":1048576,"sdkVersion":"","deviceName":"Ascent_lite_plus","cpuTemp":45,"firmware":"Ascent_H_Sky_18_21_10","serialNumber":"1_0106","hardwareVersion":"FPV-Ascent-Sky-472-V1.3-1.1","status":0,"detail":"OK"}
+[  625.395s] device: Ascent_lite_plus Ascent_H_Sky_18_21_10 on webserial-4
+[  642.710s] file: Ascent_H_Sky_18_21_10.img (15643553 bytes)
+[  642.826s] file check: md5 b78373e21b0131bd0c4864269ba1025b, version V18.21.10, warnings []
+[  647.038s] flash confirmed: Ascent_H_Sky_18_21_10.img → Ascent_lite_plus Ascent_H_Sky_18_21_10 on webserial-4
+[  647.039s] starting upgrade on webserial-4 with Ascent_H_Sky_18_21_10.img
+[  647.039s] upgrade phase: rebooting (port webserial-4)
+[  647.178s] learned device seq echo behaviour: echoes seq: true
+[  647.178s] FIND_DEVICE reply: {"receiveMaxSize":1048576,"sdkVersion":"","deviceName":"Ascent_lite_plus","cpuTemp":49,"firmware":"Ascent_H_Sky_18_21_10","serialNumber":"1_0106","hardwareVersion":"FPV-Ascent-Sky-472-V1.3-1.1","status":0,"detail":"OK"}
+[  647.178s] device found: Ascent_lite_plus Ascent_H_Sky_18_21_10
+[  647.179s] sending REBOOT clean (no ack)
+[  647.181s] upgrade phase: reconnecting (port webserial-4)
+[  647.181s] reconnecting (delay 11500 ms, timeout 200000 ms)
+[  658.718s] learned device seq echo behaviour: echoes seq: true
+[  658.719s] FIND_DEVICE reply: {"receiveMaxSize":1048576,"sdkVersion":"","deviceName":"Ascent","cpuTemp":49,"firmware":"Ascent_H_Sky_18_21_10","serialNumber":"1_0106","hardwareVersion":"FPV-Edu-Sky-V0.0-0.0","status":0,"detail":"OK"}
+[  658.719s] reconnected on webserial-5
+[  658.719s] device back after clean reboot (receiveMaxSize 1048576, chunk 1048576)
+[  658.719s] upgrade phase: enteringUpgrade (port webserial-5)
+[  658.720s] upgrade phase: startingTransfer (port webserial-5)
+[  658.720s] SENDFILE_START /tmp/pc/Ascent_H_Sky_18_21_10.img md5 b78373e21b0131bd0c4864269ba1025b len 15643553
+[  658.721s] upgrade phase: sending (port webserial-5)
+[  662.082s] upgrade phase: finishing (port webserial-5)
+[  662.514s] SENDFILE_END sent; cancel is now locked
+[  662.514s] upgrade phase: writing (port webserial-5)
+[  663.517s] upgrade status (poll 1): 38% status 2 
+[  664.519s] upgrade status (poll 2): 59% status 2 
+[  665.522s] upgrade status (poll 3): 79% status 2 
+[  666.524s] upgrade status (poll 4): 79% status 2 
+[  667.527s] upgrade status (poll 5): 100% status 3 
+[  667.527s] upgrade phase: restarting (port webserial-5)
+[  679.032s] upgrade phase: verifying (port webserial-5)
+[  679.033s] reconnecting (delay 0 ms, timeout 200000 ms)
+[  679.116s] learned device seq echo behaviour: echoes seq: true
+[  679.116s] FIND_DEVICE reply: {"receiveMaxSize":1048576,"sdkVersion":"","deviceName":"Ascent_lite_plus","cpuTemp":49,"firmware":"Ascent_H_Sky_18_21_10","serialNumber":"1_0106","hardwareVersion":"FPV-Ascent-Sky-472-V1.3-1.1","status":0,"detail":"OK"}
+[  679.116s] reconnected on webserial-6
+[  679.116s] upgrade complete: Ascent_H_Sky_18_21_10 on webserial-6
+[  679.118s] flash complete: device reports Ascent_H_Sky_18_21_10
+[  680.156s] learned device seq echo behaviour: echoes seq: true
+[  680.156s] FIND_DEVICE reply: {"receiveMaxSize":1048576,"sdkVersion":"","deviceName":"Ascent_lite_plus","cpuTemp":48,"firmware":"Ascent_H_Sky_18_21_10","serialNumber":"1_0106","hardwareVersion":"FPV-Ascent-Sky-472-V1.3-1.1","status":0,"detail":"OK"}
+[  680.158s] device: Ascent_lite_plus Ascent_H_Sky_18_21_10 on webserial-6
+[  680.246s] file check: md5 b78373e21b0131bd0c4864269ba1025b, version V18.21.10, warnings []
