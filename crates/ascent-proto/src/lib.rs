@@ -1,10 +1,15 @@
 //! Wire protocol for the Caddx Ascent VTX (unofficial, reverse-engineered).
 
 pub mod command;
+pub mod discovery;
 pub mod frame;
 pub mod link;
+#[cfg(feature = "logging")]
+pub mod logging;
 pub mod payload;
 pub mod reader;
+#[cfg(feature = "serial")]
+pub mod serial;
 pub mod session;
 #[cfg(feature = "sim")]
 pub mod sim;

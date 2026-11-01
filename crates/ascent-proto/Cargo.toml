@@ -7,11 +7,18 @@ description = "Wire protocol for the Caddx Ascent VTX (unofficial)"
 
 [features]
 sim = []
+serial = ["dep:serialport"]
+logging = ["dep:tracing-subscriber", "dep:tracing-appender", "dep:dirs", "dep:chrono"]
 
 [dependencies]
 crc32fast = "1"
 thiserror = "2"
 tracing = "0.1"
+serialport = { version = "4", default-features = false, optional = true }
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"], optional = true }
+tracing-appender = { version = "0.2", optional = true }
+dirs = { version = "5", optional = true }
+chrono = { version = "0.4", default-features = false, features = ["clock"], optional = true }
 
 [dev-dependencies]
 ascent-proto = { path = ".", features = ["sim"] }

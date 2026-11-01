@@ -1,0 +1,14 @@
+[package]
+name = "ascent-cli"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+description = "Command-line flasher for the Caddx Ascent VTX (unofficial)"
+
+[[bin]]
+name = "ascent-flash"
+path = "src/main.rs"
+
+[dependencies]
+ascent-proto = { path = "../ascent-proto", features = ["sim", "logging", "serial"] }
+clap = { version = "4", features = ["derive"] }
