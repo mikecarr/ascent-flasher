@@ -16,21 +16,38 @@ const MAX_NON_FATAL_IN_A_ROW = 50;
 /** Upper bound for each awaited step of Link.close(). */
 const CLOSE_STEP_MS = 2000;
 
-// A port's id is stable for as long as the same SerialPort object exists.
-const portIds = new WeakMap();
+// A port's id is stable for as long as the browser lists it. Chrome caches
+// SerialPort objects only weakly, so an unreferenced one is collected and the
+// next getPorts() returns a new object for the same port; holding every listed
+// port here keeps its object (and id) until the port is really gone.
+const heldPorts = new WeakMap(); // serial -> Map<SerialPort, id>
 let nextPortId = 1;
-function idFor(port) {
-  let id = portIds.get(port);
+function held(serial) {
+  let ports = heldPorts.get(serial);
+  if (!ports) heldPorts.set(serial, (ports = new Map()));
+  return ports;
+}
+
+function idFor(serial, port) {
+  const ports = held(serial);
+  let id = ports.get(port);
   if (!id) {
     id = `webserial-${nextPortId++}`;
-    portIds.set(port, id);
+    ports.set(port, id);
   }
   return id;
 }
 
-function infoFor(port) {
+/** Drop ports the browser no longer lists, so a returning device gets a new id. */
+function forgetUnlisted(serial, listed) {
+  const ports = held(serial);
+  const keep = new Set(listed);
+  for (const port of ports.keys()) if (!keep.has(port)) ports.delete(port);
+}
+
+function infoFor(serial, port) {
   const { usbVendorId, usbProductId } = port.getInfo?.() ?? {};
-  return { id: idFor(port), vid: usbVendorId, pid: usbProductId };
+  return { id: idFor(serial, port), vid: usbVendorId, pid: usbProductId };
 }
 
 const errName = (e) => e?.name ?? "";
@@ -149,9 +166,11 @@ export class WebSerialConnector {
 
   async #ports() {
     if (!this.serial) return [];
+    const listed = await this.serial.getPorts();
+    forgetUnlisted(this.serial, listed);
     const out = [];
-    for (const port of await this.serial.getPorts()) {
-      const info = infoFor(port);
+    for (const port of listed) {
+      const info = infoFor(this.serial, port);
       if (isCandidateVid(info.vid)) out.push({ port, info });
     }
     return out;
@@ -203,7 +222,7 @@ export async function requestDevice(serial = globalThis.navigator?.serial) {
   if (!serial) return null;
   try {
     const port = await serial.requestPort({ filters: CANDIDATE_VIDS.map((usbVendorId) => ({ usbVendorId })) });
-    return infoFor(port);
+    return infoFor(serial, port);
   } catch (e) {
     if (errName(e) === "NotFoundError") return null;
     throw e;

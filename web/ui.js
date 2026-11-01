@@ -106,7 +106,7 @@ const s = {
   device: null,        // {port, info} | null
   deviceError: null,   // why the last scan found nothing (e.g. port busy)
   file: null,          // chosen File
-  checkedFor: null,    // device key the current check/result belongs to
+  checkedFor: null,    // model+firmware key the current check/result belongs to
   checking: false,     // preflight (MD5) running
   fw: null,            // preflight result {firmware, warnings}
   fileError: null,     // PreflightError message
@@ -154,6 +154,8 @@ const flashable = () => {
   return !!m && canFlash(m, HOST);
 };
 const deviceKey = (d) => (d ? `${d.port.id}\n${d.info.deviceName}\n${d.info.firmware}` : null);
+// What the file check depends on: the model and its firmware, not the port.
+const fileCheckKey = (d) => (d ? `${d.info.deviceName}\n${d.info.firmware}` : null);
 const hex4 = (n) => (typeof n === "number" ? n.toString(16).toUpperCase().padStart(4, "0") : "?");
 const capitalise = (t) => (t ? t[0].toUpperCase() + t.slice(1) : t);
 // After the next paint; a timer backs it up, since a tab that isn't being
@@ -421,8 +423,8 @@ async function syncFile() {
     render();
     return;
   }
-  const key = deviceKey(s.device);
-  if (key === s.checkedFor) return; // same device and firmware: still valid
+  const key = fileCheckKey(s.device);
+  if (key === s.checkedFor) return; // same model and firmware: still valid
   const seq = ++checkSeq;
   const { file, device } = s;
   s.checkedFor = key;
@@ -450,7 +452,7 @@ async function syncFile() {
   }
   render();
   // The device may have changed while hashing.
-  if (deviceKey(s.device) !== key) void syncFile();
+  if (fileCheckKey(s.device) !== key) void syncFile();
 }
 
 // ---- Confirm dialog --------------------------------------------------------
