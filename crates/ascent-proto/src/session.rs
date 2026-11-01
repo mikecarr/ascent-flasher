@@ -40,6 +40,7 @@ pub struct Session {
     timing: AckTiming,
     reader: FrameReader,
     seq: u32,
+    echoes_seq: Option<bool>,
 }
 
 fn hex(b: &[u8]) -> String {
@@ -52,8 +53,15 @@ impl Session {
             link,
             timing,
             reader: FrameReader::new(),
-            seq: 0,
+            seq: 1,
+            echoes_seq: None,
         }
+    }
+
+    /// Whether the device echoes the request seq in its replies: `None` until
+    /// the first reply has been seen.
+    pub fn echoes_seq(&self) -> Option<bool> {
+        self.echoes_seq
     }
 
     fn next_seq(&mut self) -> u32 {
@@ -86,6 +94,13 @@ impl Session {
     /// re-sending with the same seq (retry + 1) every `resend_every`.
     pub fn request(&mut self, cmd: Command, payload: &[u8]) -> Result<Frame, SessionError> {
         let seq = self.next_seq();
+        while let Some(f) = self.reader.next_frame() {
+            tracing::debug!(
+                cmd = f.header.command,
+                seq = f.header.seq,
+                "discarding buffered frame before new request"
+            );
+        }
         let mut retry = 0;
         self.send(cmd, payload, seq, retry)?;
         let start = Instant::now();
@@ -102,6 +117,19 @@ impl Session {
                 );
                 tracing::trace!(hex = %hex(&f.payload), "recv payload");
                 if f.header.command == cmd.id() {
+                    if self.echoes_seq.is_none() {
+                        let echo = f.header.seq == seq;
+                        tracing::info!(echoes_seq = echo, "learned device seq echo behaviour");
+                        self.echoes_seq = Some(echo);
+                    }
+                    if self.echoes_seq == Some(true) && f.header.seq != seq {
+                        tracing::debug!(
+                            seq = f.header.seq,
+                            expected = seq,
+                            "skipping stale reply with different seq"
+                        );
+                        continue;
+                    }
                     return Ok(f);
                 }
                 tracing::debug!(cmd = f.header.command, "ignoring frame for other command");

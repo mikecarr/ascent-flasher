@@ -1,5 +1,8 @@
+use ascent_proto::frame::encode_ack;
 use ascent_proto::sim::{SimConnector, SimDevice};
 use ascent_proto::*;
+use std::collections::VecDeque;
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 const TIMING: AckTiming = AckTiming {
@@ -123,4 +126,106 @@ fn status_100_self_reboots() {
     assert!(c.list().unwrap().is_empty());
     std::thread::sleep(Duration::from_millis(70));
     assert_eq!(c.list().unwrap().len(), 1);
+}
+
+type ReplyFn = Box<dyn FnMut(&Header) -> Vec<Vec<u8>> + Send>;
+
+/// Link that parses requests and replies via a closure producing ack bytes.
+struct FakeLink {
+    reader: FrameReader,
+    rx: VecDeque<u8>,
+    seen: Arc<Mutex<Vec<u32>>>,
+    reply: ReplyFn,
+}
+
+impl Link for FakeLink {
+    fn write_all(&mut self, buf: &[u8]) -> std::io::Result<()> {
+        self.reader.push(buf);
+        while let Some(f) = self.reader.next_frame() {
+            self.seen.lock().unwrap().push(f.header.seq);
+            for r in (self.reply)(&f.header) {
+                self.rx.extend(r);
+            }
+        }
+        Ok(())
+    }
+    fn read_some(&mut self, buf: &mut [u8], timeout: Duration) -> std::io::Result<usize> {
+        if self.rx.is_empty() {
+            std::thread::sleep(timeout);
+        }
+        let n = buf.len().min(self.rx.len());
+        for b in buf.iter_mut().take(n) {
+            *b = self.rx.pop_front().unwrap();
+        }
+        Ok(n)
+    }
+}
+
+fn fake(reply: impl FnMut(&Header) -> Vec<Vec<u8>> + Send + 'static) -> Session {
+    Session::new(
+        Box::new(FakeLink {
+            reader: FrameReader::new(),
+            rx: VecDeque::new(),
+            seen: Arc::default(),
+            reply: Box::new(reply),
+        }),
+        TIMING,
+    )
+}
+
+#[test]
+fn stale_duplicate_ack_is_skipped() {
+    let mut n = 0;
+    let mut s = fake(move |h| {
+        n += 1;
+        // Distinguish replies by payload; first request is acked twice.
+        let a = encode_ack(h.command, &[n], h.seq);
+        if n == 1 {
+            vec![a.clone(), a]
+        } else {
+            vec![a]
+        }
+    });
+    let a = s.request(Command::SendFileData, b"a").unwrap();
+    assert_eq!(a.header.seq, 1);
+    let b = s.request(Command::SendFileData, b"b").unwrap();
+    assert_eq!(b.header.seq, 2);
+    assert_eq!(b.payload, vec![2]);
+    assert_eq!(s.echoes_seq(), Some(true));
+}
+
+#[test]
+fn stale_ack_with_old_seq_is_skipped_once_echo_learned() {
+    let mut n = 0;
+    let mut s = fake(move |h| {
+        n += 1;
+        if n == 2 {
+            // Late ack for seq 1 arrives ahead of B's own reply.
+            vec![
+                encode_ack(h.command, &[9], h.seq - 1),
+                encode_ack(h.command, &[2], h.seq),
+            ]
+        } else {
+            vec![encode_ack(h.command, &[n], h.seq)]
+        }
+    });
+    s.request(Command::SendFileData, b"a").unwrap();
+    let b = s.request(Command::SendFileData, b"b").unwrap();
+    assert_eq!(b.payload, vec![2]);
+}
+
+#[test]
+fn command_only_when_device_does_not_echo_seq() {
+    let mut s = fake(|h| vec![encode_ack(h.command, &[], 0)]);
+    s.request(Command::FindDevice, &[]).unwrap();
+    s.request(Command::FindDevice, &[]).unwrap();
+    assert_eq!(s.echoes_seq(), Some(false));
+}
+
+#[test]
+fn seq_starts_at_one() {
+    let (c, mut s) = setup(SimDevice::lite_plus());
+    assert_eq!(s.echoes_seq(), None);
+    s.request(Command::FindDevice, &[]).unwrap();
+    assert_eq!(c.device.lock().unwrap().log[0].seq, 1);
 }
