@@ -3,14 +3,31 @@
 
 use crate::frame::{decode_header, frame_crc, Frame, HEADER_LEN, MAX_FRAME_LEN};
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct FrameReader {
     buf: Vec<u8>,
+    max_len: usize,
+}
+
+impl Default for FrameReader {
+    fn default() -> Self {
+        Self::with_max_len(MAX_FRAME_LEN)
+    }
 }
 
 impl FrameReader {
+    /// Reader for frames received by the host (at most [`MAX_FRAME_LEN`]).
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// Reader accepting frames of up to `max_len` bytes including the header
+    /// (e.g. the device side of the simulator, which receives large chunks).
+    pub fn with_max_len(max_len: usize) -> Self {
+        FrameReader {
+            buf: Vec::new(),
+            max_len,
+        }
     }
 
     pub fn push(&mut self, bytes: &[u8]) {
@@ -26,7 +43,7 @@ impl FrameReader {
             }
             let head: [u8; HEADER_LEN] = self.buf[..HEADER_LEN].try_into().ok()?;
             let header = match decode_header(&head) {
-                Some(h) if HEADER_LEN + (h.length as usize) <= MAX_FRAME_LEN => h,
+                Some(h) if HEADER_LEN + (h.length as usize) <= self.max_len => h,
                 _ => {
                     self.buf.drain(..1);
                     continue;

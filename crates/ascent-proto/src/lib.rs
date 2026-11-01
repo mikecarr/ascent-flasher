@@ -14,6 +14,7 @@ pub mod serial;
 pub mod session;
 #[cfg(feature = "sim")]
 pub mod sim;
+pub mod upgrade;
 
 pub use command::Command;
 pub use payload::{

@@ -9,7 +9,7 @@
 //! drained), even after the device reappears; reopen via the connector.
 
 use crate::command::Command;
-use crate::frame::{encode_ack, Header};
+use crate::frame::{encode_ack, Header, HEADER_LEN};
 use crate::link::{Connector, Link, PortInfo};
 use crate::payload::{DeviceInfo, FileDataInfo, UpgradeStatus};
 use crate::reader::FrameReader;
@@ -17,6 +17,9 @@ use std::collections::VecDeque;
 use std::io;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
+
+/// Largest SENDFILE_DATA payload the simulated device accepts.
+const SIM_MAX_CHUNK: usize = 1_048_576;
 
 pub struct SimDevice {
     pub info: DeviceInfo,
@@ -222,7 +225,8 @@ impl Connector for SimConnector {
         Ok(Box::new(SimLink {
             device: self.device.clone(),
             epoch: d.epoch,
-            reader: FrameReader::new(),
+            // Device side: accepts chunks up to the 1 MiB protocol cap.
+            reader: FrameReader::with_max_len(HEADER_LEN + SIM_MAX_CHUNK),
             rx: VecDeque::new(),
         }))
     }
