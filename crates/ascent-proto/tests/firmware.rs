@@ -182,22 +182,22 @@ fn preflight_rejects_oversize() {
     let p = d.path().join("Ascent_H_Sky_17_6_0.img");
     let f = std::fs::File::create(&p).unwrap();
     // Sparse: takes no disk space, and preflight must not read it.
-    f.set_len(64 * 1024 * 1024 + 1).unwrap();
+    f.set_len(256 * 1024 * 1024 + 1).unwrap();
     drop(f);
     let r = preflight(&info("Ascent_lite", FW), &p);
     match r {
         Err(e @ PreflightError::TooLarge { size }) => {
-            assert_eq!(size, 64 * 1024 * 1024 + 1);
+            assert_eq!(size, 256 * 1024 * 1024 + 1);
             assert_eq!(
                 e.to_string(),
-                "firmware file is too large (67 MB) — Ascent firmware is ~10–20 MB"
+                "firmware file is too large (268 MB) — Ascent images are at most about 180 MB; is this the right file?"
             );
         }
         other => panic!("unexpected {other:?}"),
     }
-    // Exactly 64 MiB is accepted.
+    // Exactly 256 MiB is accepted.
     let f = std::fs::OpenOptions::new().write(true).open(&p).unwrap();
-    f.set_len(64 * 1024 * 1024).unwrap();
+    f.set_len(256 * 1024 * 1024).unwrap();
     drop(f);
     assert!(preflight(&info("Ascent_lite", FW), &p).is_ok());
 }

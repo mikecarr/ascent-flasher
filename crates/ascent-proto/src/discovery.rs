@@ -110,7 +110,7 @@ impl FoundDevice {
 /// Whether a device name (case-insensitive) is a flashable Ascent model.
 pub fn is_flashable_name(device_name: &str) -> bool {
     let n = device_name.to_ascii_lowercase();
-    n == "ascent_lite" || n == "ascent_lite_plus"
+    n == "ascent_lite" || n == "ascent_lite_plus" || n == "ascent_vrx_pro"
 }
 
 /// Probe every candidate port with FIND_DEVICE only, closing each afterwards.

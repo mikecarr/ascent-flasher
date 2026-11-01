@@ -283,7 +283,7 @@ fn flash(
         return Ok(1);
     }
 
-    let mut opts = UpgradeOptions::for_port(&device.port);
+    let mut opts = UpgradeOptions::for_device(&device.port, &device.info.device_name);
     if cli.simulate {
         opts.reopen_delay = Duration::from_millis(50);
         opts.status_poll = Duration::from_millis(50);

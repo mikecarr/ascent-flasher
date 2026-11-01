@@ -10,8 +10,8 @@ use std::sync::OnceLock;
 
 const MAX_PATH_CHARS: usize = 200;
 
-/// Largest firmware file accepted (Ascent firmware is ~10-20 MB).
-pub const MAX_FIRMWARE_BYTES: u64 = 64 * 1024 * 1024;
+/// Largest firmware file accepted (Ascent images are at most about 180 MB).
+pub const MAX_FIRMWARE_BYTES: u64 = 256 * 1024 * 1024;
 
 /// Device-side directory for the uploaded file (`/tmp/pc/<basename>`).
 pub const REMOTE_DIR: &str = "/tmp/pc/";
@@ -156,7 +156,7 @@ pub enum PreflightError {
     Unreadable(std::io::Error),
     #[error("firmware file is empty")]
     Empty,
-    #[error("firmware file is too large ({} MB) — Ascent firmware is ~10–20 MB", size / 1_000_000)]
+    #[error("firmware file is too large ({} MB) — Ascent images are at most about 180 MB; is this the right file?", size / 1_000_000)]
     TooLarge { size: u64 },
     #[error("rename the file to a shorter ASCII name, e.g. Ascent_H_Sky_18_21_10.img")]
     BadFileName,

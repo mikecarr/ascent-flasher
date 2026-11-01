@@ -65,5 +65,6 @@ fn found(name: &str) -> FoundDevice {
 fn flashable_names() {
     assert!(found("ascent_lite_plus").is_flashable());
     assert!(found("ASCENT_LITE").is_flashable());
+    assert!(found("Ascent_VRX_pro").is_flashable());
     assert!(!found("ascent_vrx").is_flashable());
 }

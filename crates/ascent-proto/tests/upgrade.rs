@@ -130,7 +130,7 @@ fn reopen_delays_by_vid() {
         pid: PID,
         serial: None,
     };
-    let o = UpgradeOptions::for_port(&port);
+    let o = UpgradeOptions::for_device(&port, "Ascent_lite");
     assert_eq!(o.reopen_delay, Duration::from_millis(11_500));
     let d = UpgradeOptions::default();
     assert_eq!(d.reopen_delay, Duration::from_secs(8));
@@ -142,6 +142,22 @@ fn reopen_delays_by_vid() {
     assert_eq!(d.max_status_polls, 200);
     assert_eq!(d.writing_timeout, Duration::from_secs(300));
     assert_eq!(o.reconnect_timeout, d.reconnect_timeout);
+}
+
+#[test]
+fn vrx_pro_writing_timeout() {
+    let port = PortInfo {
+        path: PATH.into(),
+        vid: 0x1D77,
+        pid: PID,
+        serial: None,
+    };
+    let o = UpgradeOptions::for_device(&port, "Ascent_VRX_pro");
+    assert_eq!(o.writing_timeout, Duration::from_secs(600));
+    assert_eq!(o.max_status_polls, 1200);
+    let l = UpgradeOptions::for_device(&port, "Ascent_lite");
+    assert_eq!(l.writing_timeout, Duration::from_secs(300));
+    assert_eq!(l.max_status_polls, 600);
 }
 
 #[test]

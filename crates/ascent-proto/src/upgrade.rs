@@ -72,11 +72,25 @@ impl Default for UpgradeOptions {
 }
 
 impl UpgradeOptions {
-    /// Defaults, with the reopen delay chosen by the port's USB VID.
-    pub fn for_port(port: &PortInfo) -> UpgradeOptions {
+    /// Defaults, with the reopen delay chosen by the port's USB VID and the
+    /// writing limit by the device model (the VRX Pro writes a ~180 MB image).
+    /// The status-poll budget is derived from the writing limit so it can never
+    /// end the write phase early.
+    pub fn for_device(port: &PortInfo, device_name: &str) -> UpgradeOptions {
+        let writing_timeout = if device_name.eq_ignore_ascii_case("ascent_vrx_pro") {
+            Duration::from_secs(600)
+        } else {
+            Duration::from_secs(300)
+        };
+        let base = UpgradeOptions::default();
+        let polls = writing_timeout
+            .as_nanos()
+            .div_ceil(base.status_poll.as_nanos().max(1));
         UpgradeOptions {
             reopen_delay: reopen_delay_for_vid(port.vid),
-            ..UpgradeOptions::default()
+            writing_timeout,
+            max_status_polls: u32::try_from(polls.saturating_mul(2)).unwrap_or(u32::MAX),
+            ..base
         }
     }
 }

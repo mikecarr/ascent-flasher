@@ -399,7 +399,7 @@ pub fn start_flash(
         let _guard = guard;
         // Wait for any in-flight watcher probe; hold the lock for the whole flash.
         let _scan = state.scan_lock.lock().unwrap_or_else(|e| e.into_inner());
-        let mut opts = UpgradeOptions::for_port(&device.port);
+        let mut opts = UpgradeOptions::for_device(&device.port, &device.info.device_name);
         if state.simulate {
             opts.reopen_delay = Duration::from_millis(50);
             opts.status_poll = Duration::from_millis(50);
