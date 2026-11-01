@@ -81,6 +81,12 @@ None of these are needed to talk to the device.
 - **Seq echo:** yes, as on the Lite.
 - Not flashed yet (it was already on the latest firmware).
 
+### Web Serial in Chrome (2026-11-01, Lite+, test page `web/serial-test/`)
+
+- **FIND_DEVICE works from the browser:** reply in 124–208 ms, same fields as the CLI.
+- **Reconnect after REBOOT "clean" needs no new port pick.** Timeline from sending the reboot: Chrome's `disconnect` event at 2.7 s, `connect` at 7.5 s. After the 11.5 s wait, `navigator.serial.getPorts()` returned the device (a new `SerialPort` object; the permission carried over) and clean-mode FIND_DEVICE answered in 27 ms (`devicename "Ascent"`, firmware unchanged).
+- So a browser flasher can follow the same sequence as the app. The VTX was back on USB about 4 s before the 11.5 s wait ended; a browser version could start probing on the `connect` event instead of waiting the full delay.
+
 ## 3. Ascent ("AR"/Artosyn) serial protocol — the main one
 
 Used by all Ascent goggles, VRX, VTX and the GM V2 gimbals.

@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Ascent Serial Test</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main>
+    <h1>Ascent Serial Test <span class="tag">unofficial</span></h1>
+    <p class="lede">Checks whether Chrome can talk to an Ascent VTX and reconnect to it after it reboots into upgrade mode. This page never sends firmware.</p>
+
+    <p id="unsupported" class="warn" hidden>This browser has no Web Serial. Use desktop Chrome or Edge.</p>
+
+    <section class="card">
+      <div class="row">
+        <button id="connect">Connect…</button>
+        <button id="info" disabled>Info</button>
+        <button id="disconnect" class="quiet" disabled>Disconnect</button>
+        <span id="port" class="muted">No port selected</span>
+      </div>
+      <table id="device" hidden><tbody></tbody></table>
+    </section>
+
+    <section class="card">
+      <h2>Reconnect test</h2>
+      <p class="muted">Sends one REBOOT "clean" (the first step of a real flash), then watches whether Chrome gets the VTX back without asking you to pick it again. Afterwards the VTX stays in upgrade mode: <strong>power-cycle it</strong> (unplug USB and battery) to return to normal. Its firmware is not touched.</p>
+      <button id="reboot" class="danger" disabled>Reboot to upgrade mode and test reconnect</button>
+      <ol id="result" class="result" hidden></ol>
+    </section>
+
+    <section class="card">
+      <div class="row">
+        <h2>Log</h2>
+        <button id="copy" class="quiet">Copy log</button>
+      </div>
+      <pre id="log" aria-live="polite"></pre>
+    </section>
+  </main>
+  <script type="module" src="serial-test.js"></script>
+</body>
+</html>
