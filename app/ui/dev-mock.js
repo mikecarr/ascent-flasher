@@ -1,5 +1,7 @@
 // Browser-only stand-in for the Tauri runtime. Loaded by index.html only when
-// window.__TAURI__ is absent. Scenarios: ?scenario=nodevice|notflashable|error
+// window.__TAURI__ is absent. Scenarios: ?scenario=nodevice|notflashable|error|changed
+// (changed: start_flash refuses as if the device or warnings changed).
+// Console: __mockCloseRequest() simulates closing the window.
 (() => {
   const scenario = new URLSearchParams(location.search).get("scenario") || "";
   const listeners = {};
@@ -16,6 +18,7 @@
   let timers = [];
   let cancelled = false;
   let locked = false;
+  let flashing = false;
 
   function parse(path) {
     const fileName = String(path).split(/[\\/]/).pop();
@@ -35,7 +38,7 @@
   }
 
   function runFlash() {
-    cancelled = false; locked = false;
+    cancelled = false; locked = false; flashing = true;
     let t = 0;
     const step = (ms, fn) => { t += ms; later(t, () => { if (!cancelled) fn(); }); };
     step(300, () => progress("rebooting", "Rebooting into upgrade mode…", null));
@@ -49,6 +52,7 @@
     step(400, () => progress("restarting", "Restarting device…", null, true));
     step(800, () => progress("verifying", "Verifying…", null, true));
     step(500, () => {
+      flashing = false;
       if (scenario === "error") {
         emit("flash-done", { ok: false, message: "device did not come back after upgrade",
           hint: "Unplug the VTX, wait 10 seconds, plug it back in and try again." });
@@ -64,14 +68,25 @@
       if (!current) throw "No device connected";
       return parse(path);
     },
-    start_flash: async () => {
+    start_flash: async ({ path, confirmedFirmware, confirmedWarnings }) => {
       if (!current || !current.flashable) throw "No flashable device connected";
+      if (!path || typeof confirmedFirmware !== "string" || !Array.isArray(confirmedWarnings)) {
+        throw "start_flash: missing arguments";
+      }
+      if (scenario === "changed" || confirmedFirmware !== current.firmware) {
+        throw `The device changed since you confirmed (it now reports ${current.firmware}) — nothing was written. Check it and try again.`;
+      }
+      const now = parse(path).warnings.map((w) => w.kind).sort();
+      if (JSON.stringify(now) !== JSON.stringify([...confirmedWarnings].sort())) {
+        throw "The file's warnings changed since you confirmed — nothing was written. Choose the file again.";
+      }
       runFlash();
     },
     cancel_flash: async () => {
       if (locked) return;
       cancelled = true;
       timers.forEach(clearTimeout); timers = [];
+      later(300, () => { flashing = false; });
       later(300, () => emit("flash-done", { ok: false, message: "upgrade cancelled (device unchanged)", hint: null }));
     },
   };
@@ -104,6 +119,12 @@
         },
       }),
     },
+  };
+
+  // Like the backend's close/quit guard: blocked (with an event) while flashing.
+  window.__mockCloseRequest = () => {
+    if (flashing) { emit("close-blocked", { locked }); return false; }
+    return true;
   };
 
   // Let the page toggle device presence in the console: __mockDevice(null|{...})

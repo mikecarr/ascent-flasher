@@ -12,7 +12,7 @@
     drop: $("drop"), dropText: $("drop-text"), flash: $("flash"),
     progWrap: $("progress-wrap"), bar: $("bar"), fill: $("fill"), status: $("status"),
     result: $("result"), resultTitle: $("result-title"), resultMsg: $("result-msg"),
-    resultHint: $("result-hint"), again: $("again"),
+    resultHint: $("result-hint"), again: $("again"), closeNote: $("close-note"),
   };
 
   // Single source of truth for the UI.
@@ -26,6 +26,7 @@
     busy: false,         // confirm dialogs / start_flash in flight
     done: null,          // FlashDone
     progress: null,      // last ProgressEvent
+    closeBlocked: null,  // { locked } from the last blocked close/quit, while flashing
   };
 
   const flashable = () => !!(s.device && s.device.flashable);
@@ -102,6 +103,13 @@
     }
     el.status.textContent = flashing ? (p ? p.text : "Starting…") : "";
 
+    // Close/quit refused while flashing
+    const cb = flashing && s.closeBlocked;
+    el.closeNote.hidden = !cb;
+    el.closeNote.textContent = !cb ? ""
+      : (cb.locked || s.locked) ? "Device is writing firmware — wait for it to finish."
+      : "A flash is running — press Cancel first, then close.";
+
     // Result
     const done = s.mode === "done" && s.done;
     el.result.hidden = !done;
@@ -174,7 +182,11 @@
       return;
     }
     if (s.busy || !flashable() || !s.fw || !s.path) return;
-    const path = s.path, fw = s.fw; // snapshot: what the user confirms is what is flashed
+    // Snapshot: what the user confirms is what is flashed. The backend refuses
+    // to start if the device firmware or the warning kinds differ from these.
+    const path = s.path, fw = s.fw;
+    const confirmedFirmware = s.device.firmware;
+    const confirmedWarnings = (fw.warnings || []).map((w) => w.kind);
     s.busy = true;
     render();
     try {
@@ -190,8 +202,9 @@
       s.locked = false;
       s.progress = null;
       s.done = null;
+      s.closeBlocked = null;
       render();
-      await invoke("start_flash", { path });
+      await invoke("start_flash", { path, confirmedFirmware, confirmedWarnings });
     } catch (e) {
       s.mode = "idle";
       showError(e);
@@ -227,9 +240,15 @@
     if (ev.payload.cancelLocked) s.locked = true;
     render();
   }).catch(console.error);
+  listen("close-blocked", (ev) => {
+    if (s.mode !== "flashing") return;
+    s.closeBlocked = { locked: !!(ev.payload && ev.payload.locked) };
+    render();
+  }).catch(console.error);
   listen("flash-done", (ev) => {
     s.mode = "done";
     s.locked = false;
+    s.closeBlocked = null;
     s.progress = null;
     s.done = ev.payload;
     render();

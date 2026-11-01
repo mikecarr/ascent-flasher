@@ -83,16 +83,58 @@ pub fn choose_device(mut found: Vec<FoundDevice>) -> Option<(FoundDevice, usize)
     Some((chosen, found.len()))
 }
 
-pub fn warning_view(w: &Warning) -> WarningView {
-    let kind = match w {
+fn warning_kind(w: &Warning) -> &'static str {
+    match w {
         Warning::Downgrade { .. } => "downgrade",
         Warning::NameMismatch { .. } => "nameMismatch",
         Warning::UnknownVersion => "unknownVersion",
-    };
+    }
+}
+
+pub fn warning_view(w: &Warning) -> WarningView {
     WarningView {
-        kind,
+        kind: warning_kind(w),
         text: warning_text(w),
     }
+}
+
+/// Payload of the `close-blocked` event.
+#[derive(Clone, Debug, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CloseBlocked {
+    pub locked: bool,
+}
+
+/// Whether a window close or app quit must be refused: always while a flash
+/// is running (cancel first before the lock; wait after it).
+pub fn should_block_close(flashing: bool) -> bool {
+    flashing
+}
+
+/// Refuse to start unless the device firmware and the preflight warning
+/// kinds are exactly what the user saw and confirmed.
+pub fn check_confirmation(
+    device_firmware: &str,
+    warnings: &[Warning],
+    confirmed_firmware: &str,
+    confirmed_warnings: &[String],
+) -> Result<(), String> {
+    if device_firmware != confirmed_firmware {
+        return Err(format!(
+            "The device changed since you confirmed (it now reports {device_firmware}) — nothing was written. Check it and try again."
+        ));
+    }
+    let mut now: Vec<&str> = warnings.iter().map(warning_kind).collect();
+    now.sort_unstable();
+    let mut confirmed: Vec<&str> = confirmed_warnings.iter().map(String::as_str).collect();
+    confirmed.sort_unstable();
+    if now != confirmed {
+        return Err(
+            "The file's warnings changed since you confirmed — nothing was written. Choose the file again."
+                .into(),
+        );
+    }
+    Ok(())
 }
 
 fn phase_name(p: Phase) -> &'static str {
@@ -178,6 +220,8 @@ pub struct AppState {
     pub simulate: bool,
     pub current: Mutex<Option<(FoundDevice, usize)>>,
     pub flashing: AtomicBool,
+    /// Set once the running flash has sent SENDFILE_END (cancel locked).
+    pub locked: AtomicBool,
     pub rescan: AtomicBool,
     /// Held by the watcher for a whole probe, and by the flash thread for the
     /// whole flash, so the watcher never opens a port during a flash.
@@ -262,7 +306,7 @@ pub fn spawn_watcher(app: AppHandle, state: Arc<AppState>) {
             let view = chosen.as_ref().map(|(f, n)| device_view(f, *n));
             *state.current.lock().unwrap() = chosen;
             if view != emitted || forced {
-                eprintln!("[watcher] emit device-changed: {view:?}");
+                tracing::debug!(?view, "watcher: emit device-changed");
                 let _ = app.emit("device-changed", &view);
                 emitted = view;
             }
@@ -294,11 +338,20 @@ impl Drop for FlashingGuard {
     fn drop(&mut self) {
         *self.0.cancel.lock().unwrap() = None;
         self.0.rescan.store(true, Ordering::SeqCst);
+        self.0.locked.store(false, Ordering::SeqCst);
         self.0.flashing.store(false, Ordering::SeqCst);
     }
 }
 
-pub fn start_flash(app: AppHandle, state: Arc<AppState>, path: String) -> Result<(), String> {
+/// `confirmed_firmware` / `confirmed_warnings` are the device firmware and
+/// warning kinds the UI showed when the user confirmed.
+pub fn start_flash(
+    app: AppHandle,
+    state: Arc<AppState>,
+    path: String,
+    confirmed_firmware: String,
+    confirmed_warnings: Vec<String>,
+) -> Result<(), String> {
     let device = match state.current.lock().unwrap().as_ref() {
         Some((f, _)) if f.is_flashable() => f.clone(),
         _ => return Err("No flashable device connected".into()),
@@ -311,7 +364,13 @@ pub fn start_flash(app: AppHandle, state: Arc<AppState>, path: String) -> Result
         return Err("A flash is already running".into());
     }
     let guard = FlashingGuard(state.clone());
-    let (fw, _warnings) = preflight(&device.info, Path::new(&path)).map_err(|e| e.to_string())?;
+    let (fw, warnings) = preflight(&device.info, Path::new(&path)).map_err(|e| e.to_string())?;
+    check_confirmation(
+        &device.info.firmware,
+        &warnings,
+        &confirmed_firmware,
+        &confirmed_warnings,
+    )?;
     let cancel = CancelToken::new();
     *state.cancel.lock().unwrap() = Some(cancel.clone());
 
@@ -328,10 +387,14 @@ pub fn start_flash(app: AppHandle, state: Arc<AppState>, path: String) -> Result
         let result = run_upgrade(
             state.conn.as_ref(),
             &device.port,
+            &device.info,
             &fw,
             &opts,
             &cancel,
             &mut |p| {
+                if matches!(p, Progress::CancelLocked) {
+                    state.locked.store(true, Ordering::SeqCst);
+                }
                 if let Some(ev) = mapper.map(&p) {
                     let _ = app.emit("flash-progress", &ev);
                 }
@@ -489,6 +552,47 @@ mod tests {
         let (set, found) = guarded_scan(conn.as_ref(), &flashing, &lock).unwrap();
         assert_eq!((set.len(), found.len()), (1, 1));
         assert!(!conn.device.lock().unwrap().log.is_empty());
+    }
+
+    #[test]
+    fn close_is_blocked_only_while_flashing() {
+        assert!(should_block_close(true));
+        assert!(!should_block_close(false));
+        let j = serde_json::to_value(CloseBlocked { locked: true }).unwrap();
+        assert_eq!(j, serde_json::json!({ "locked": true }));
+    }
+
+    #[test]
+    fn start_refused_when_warnings_differ_from_confirmed() {
+        let fw = "Ascent_H_Sky_17_5_8";
+        let down = Warning::Downgrade {
+            from: device_version("x_17_5_8").unwrap(),
+            to: device_version("x_17_5_0").unwrap(),
+        };
+        let mism = Warning::NameMismatch {
+            expected: "H_Sky".into(),
+        };
+        let kinds = |v: &[&str]| v.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+        // Same kinds, any order: accepted.
+        assert!(check_confirmation(
+            fw,
+            &[down.clone(), mism.clone()],
+            fw,
+            &kinds(&["nameMismatch", "downgrade"])
+        )
+        .is_ok());
+        assert!(check_confirmation(fw, &[], fw, &[]).is_ok());
+        // A warning the user never saw: refused.
+        let e = check_confirmation(fw, std::slice::from_ref(&down), fw, &[]).unwrap_err();
+        assert!(e.contains("warnings changed"), "{e}");
+        // A confirmed warning that is gone (different file/device): refused.
+        let e = check_confirmation(fw, &[], fw, &kinds(&["downgrade"])).unwrap_err();
+        assert!(e.contains("nothing was written"), "{e}");
+        // Different kinds: refused.
+        assert!(check_confirmation(fw, &[mism], fw, &kinds(&["downgrade"])).is_err());
+        // Different firmware: refused.
+        let e = check_confirmation(fw, &[], "Ascent_H_Sky_17_5_7", &[]).unwrap_err();
+        assert!(e.contains("device changed"), "{e}");
     }
 
     #[test]
