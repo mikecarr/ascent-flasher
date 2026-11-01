@@ -1,4 +1,4 @@
-// The flasher page: layout and state machine from the Mac app (app/ui/main.js),
+// The flasher page: layout and state machine ported from the retired Tauri app,
 // with the Tauri backend replaced by direct calls into web/lib.
 import { modelFor, canFlash, isLocalHost } from "./lib/models.js";
 import { preflight, warningText, formatVersion, PreflightError, restartMismatch } from "./lib/firmware.js";

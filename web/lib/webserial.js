@@ -1,5 +1,5 @@
 // Web Serial transport (Connector/Link over navigator.serial) and the device
-// watcher (port of spawn_watcher/should_probe in app/src-tauri/src/state.rs).
+// watcher (rules ported from the retired Tauri app's device watcher).
 // Nothing here touches the DOM or navigator at import time.
 import { LinkGoneError, PortBusyError } from "./link.js";
 import { CANDIDATE_VIDS, isCandidateVid, modelFor } from "./models.js";

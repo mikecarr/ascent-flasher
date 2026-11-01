@@ -75,6 +75,9 @@ Then open <http://localhost:8766> in Chrome or Edge.
 
 ## Command-line tool (backup)
 
+The CLI flashes the same three models (Lite, Lite+, VRX Pro). The VRX Pro needs
+its own power (DC barrel, 2-6S); USB-C carries data only.
+
 You need a Rust toolchain (stable, via [rustup](https://rustup.rs)).
 
 ```sh
@@ -98,7 +101,7 @@ ascent-flash flash <file.img> --port /dev/cu.usbmodemXXXX
 - Ctrl-C cancels the flash until the file transfer is complete. After that
   the device is writing firmware and the cancel is ignored: wait for it to
   finish.
-- Firmware files must be `.img`, at most 64 MiB.
+- Firmware files must be `.img`, at most 256 MiB.
 
 Every run writes a log file. On macOS it is in
 `~/Library/Logs/AscentFlasher/`; on Linux in `~/.local/share/AscentFlasher/logs/`.
