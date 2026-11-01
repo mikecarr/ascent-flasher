@@ -205,8 +205,18 @@ fn flash(
         (1, _) => flashable[0],
         // A single non-flashable device: let preflight explain why.
         (0, 1) => &found[0],
-        (0, _) => {
+        (0, 0) => {
             println!("No flashable Ascent device found. Plug in the VTX via USB.");
+            return Ok(2);
+        }
+        (0, _) => {
+            println!("No flashable Ascent device found. Devices seen:");
+            for f in &found {
+                println!(
+                    "  {}  {:04X}:{:04X}  {}",
+                    f.port.path, f.port.vid, f.port.pid, f.info.device_name
+                );
+            }
             return Ok(2);
         }
         _ => {
@@ -270,14 +280,18 @@ fn flash(
     {
         // Set once; the handler never exits the process, so recovery can finish.
         let (cancel, locked) = (cancel.clone(), locked.clone());
-        let _ = ctrlc::set_handler(move || {
+        let installed = ctrlc::set_handler(move || {
             if locked.load(Ordering::SeqCst) {
                 eprintln!("\nDevice is writing firmware — do not unplug (Ctrl-C is ignored now)");
             } else {
                 cancel.cancel();
-                eprintln!("\nCancelling… (the device will be returned to normal mode)");
+                eprintln!("\nCancelling…");
             }
         });
+        if let Err(e) = installed {
+            eprintln!("Error: couldn't install the Ctrl-C handler: {e}");
+            return Ok(1);
+        }
     }
 
     let mut printer = ProgressPrinter::new();

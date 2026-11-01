@@ -272,6 +272,42 @@ fn cancel_before_end_recovers() {
 }
 
 #[test]
+fn cancel_before_clean_reboot_is_unchanged() {
+    let fw = firmware(10_000);
+    let r = run_with(SimDevice::lite_plus(), &fw, |_, c| c.cancel());
+    assert!(
+        matches!(r.result, Err(UpgradeError::CancelledUnchanged)),
+        "{:?}",
+        r.result
+    );
+    assert!(r.result.as_ref().unwrap_err().recovery_hint().is_none());
+    assert!(reboot_payloads(&r).is_empty());
+}
+
+#[test]
+fn cancel_locked_is_emitted_before_117_request() {
+    let fw = firmware(10_000);
+    let conn = SimConnector::new(PATH, VID, PID, SimDevice::lite_plus());
+    let port = conn.list().unwrap().remove(0);
+    let dev = conn.device.clone();
+    let mut ends_at_lock = None;
+    let r = run_upgrade(&conn, &port, &fw, &opts(), &CancelToken::new(), &mut |p| {
+        if matches!(p, Progress::CancelLocked) {
+            let n = dev
+                .lock()
+                .unwrap()
+                .log
+                .iter()
+                .filter(|h| h.command == 117)
+                .count();
+            ends_at_lock = Some(n);
+        }
+    });
+    assert!(r.is_ok(), "{r:?}");
+    assert_eq!(ends_at_lock, Some(0));
+}
+
+#[test]
 fn cancel_after_end_ignored() {
     let fw = firmware(10_000);
     let r = run_with(SimDevice::lite_plus(), &fw, |p, c| {

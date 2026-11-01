@@ -125,6 +125,9 @@ pub enum UpgradeError {
     TransferRejected(String),
     #[error("upgrade cancelled{}", recovery_note(*recovered))]
     Cancelled { recovered: bool },
+    /// Cancelled before REBOOT "clean": nothing on the device was touched.
+    #[error("upgrade cancelled (device unchanged)")]
+    CancelledUnchanged,
     #[error("could not reconnect to the device")]
     Reconnect,
     #[error("device did not finish writing the firmware in time")]
@@ -375,9 +378,11 @@ impl Upgrade<'_> {
         self.phase(Phase::Finishing);
         self.checkpoint()?;
         self.locked = true;
+        // Announce the lock BEFORE the request: the reply may take a while and
+        // cancel is already ignored.
+        self.emit(Progress::CancelLocked);
         let reply = self.session()?.request(Command::SendFileEnd, &[]);
         tracing::info!("SENDFILE_END sent; cancel is now locked");
-        self.emit(Progress::CancelLocked);
         let frame = match reply {
             Ok(f) => f,
             Err(e @ (SessionError::Timeout { .. } | SessionError::Io(_))) => {
@@ -537,7 +542,7 @@ pub fn run_upgrade(
     // Before REBOOT "clean": nothing has changed, so no recovery.
     match u.find_first() {
         Ok(()) => {}
-        Err(Stop::Cancelled) => return Err(UpgradeError::Cancelled { recovered: true }),
+        Err(Stop::Cancelled) => return Err(UpgradeError::CancelledUnchanged),
         Err(Stop::Error(e)) => return Err(e),
     }
     match u.after_clean(fw) {

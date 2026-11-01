@@ -1,4 +1,4 @@
-//! Shared logging setup: stderr plus one log file per run.
+//! Shared logging setup: stderr (WARN, or DEBUG with --debug) plus one INFO log file per run.
 
 use std::path::PathBuf;
 use tracing_appender::non_blocking::WorkerGuard;
@@ -32,7 +32,7 @@ pub fn init(debug: bool) -> WorkerGuard {
     let stderr_filter = EnvFilter::new(if debug {
         "debug,ascent_proto=debug"
     } else {
-        "info"
+        "warn"
     });
 
     tracing_subscriber::registry()
