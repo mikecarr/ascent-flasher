@@ -89,7 +89,7 @@ button { font: inherit; }
 .secondary:hover { border-color: var(--accent); }
 
 .bar { height: 8px; background: var(--track); border-radius: 99px; overflow: hidden; }
-.fill { height: 100%; width: 0; background: var(--accent); border-radius: 99px; transition: width .2s ease; }
+.fill { height: 100%; width: 0; background: var(--accent); border-radius: 99px; }
 .bar.indeterminate .fill { width: 35%; animation: slide 1.2s ease-in-out infinite; }
 @keyframes slide { 0% { margin-left: -35%; } 100% { margin-left: 100%; } }
 @media (prefers-reduced-motion: reduce) { .bar.indeterminate .fill { animation: none; width: 100%; opacity: .5; } }
@@ -98,8 +98,14 @@ button { font: inherit; }
 .result { border-radius: 14px; padding: 14px 16px; border: 1px solid var(--border); background: var(--card); user-select: text; -webkit-user-select: text; }
 .result.ok { border-color: var(--ok); background: var(--ok-soft); }
 .result.err { border-color: var(--err); background: var(--err-soft); }
+.result.neutral { border-color: var(--muted); }
+.result.neutral .result-title { color: var(--muted); }
 .result-title { font-weight: 650; margin-bottom: 4px; }
-.result.ok .result-title { color: var(--ok); }
-.result.err .result-title { color: var(--err); }
+.result.ok .result.neutral { border-color: var(--muted); }
+.result.neutral .result-title { color: var(--muted); }
+.result-title { color: var(--ok); }
+.result.err .result.neutral { border-color: var(--muted); }
+.result.neutral .result-title { color: var(--muted); }
+.result-title { color: var(--err); }
 .result-hint { margin-top: 8px; font-size: 13px; color: var(--muted); }
 [hidden] { display: none !important; }

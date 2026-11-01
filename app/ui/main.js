@@ -86,13 +86,14 @@
       el.flash.textContent = "Flash firmware";
       el.flash.disabled = s.busy || !(flashable() && s.fw);
     }
+    el.flash.hidden = s.mode === "done";
 
     // Progress
     el.progWrap.hidden = !flashing;
     const p = s.progress;
     const pct = p && typeof p.percent === "number" ? Math.round(p.percent * 100) : null;
     el.bar.classList.toggle("indeterminate", flashing && pct === null);
-    if (pct !== null) {
+    if (flashing && pct !== null) {
       el.fill.style.width = pct + "%";
       el.bar.setAttribute("aria-valuenow", String(pct));
     } else {
@@ -105,8 +106,10 @@
     const done = s.mode === "done" && s.done;
     el.result.hidden = !done;
     if (done) {
-      el.result.className = "result " + (s.done.ok ? "ok" : "err");
-      el.resultTitle.textContent = s.done.ok ? "Flash complete" : "Flash failed";
+      const cancelled = !s.done.ok && /^upgrade cancelled/i.test(s.done.message || "");
+      el.result.className = "result " + (s.done.ok ? "ok" : cancelled ? "neutral" : "err");
+      el.result.setAttribute("role", s.done.ok || cancelled ? "status" : "alert");
+      el.resultTitle.textContent = s.done.ok ? "Flash complete" : cancelled ? "Flash cancelled" : "Flash failed";
       el.resultMsg.textContent = s.done.message;
       el.resultHint.hidden = !s.done.hint;
       el.resultHint.textContent = s.done.hint || "";
@@ -145,7 +148,7 @@
   }
 
   async function chooseFile() {
-    if (s.mode === "flashing") return;
+    if (s.mode === "flashing" || s.busy) return;
     let picked;
     try {
       picked = await dialog.open({
@@ -157,7 +160,7 @@
       showError(e);
       return;
     }
-    if (!picked) return;
+    if (!picked || s.busy || s.mode === "flashing") return;
     const path = Array.isArray(picked) ? picked[0] : picked;
     if (path) await inspect(path);
   }
@@ -171,10 +174,11 @@
       return;
     }
     if (s.busy || !flashable() || !s.fw || !s.path) return;
+    const path = s.path, fw = s.fw; // snapshot: what the user confirms is what is flashed
     s.busy = true;
     render();
     try {
-      for (const w of s.fw.warnings || []) {
+      for (const w of fw.warnings || []) {
         const ok = await dialog.ask(w.text, { title: "Warning", kind: "warning" });
         if (!ok) return;
       }
@@ -187,12 +191,10 @@
       s.progress = null;
       s.done = null;
       render();
-      try {
-        await invoke("start_flash", { path: s.path });
-      } catch (e) {
-        s.mode = "idle";
-        showError(e);
-      }
+      await invoke("start_flash", { path });
+    } catch (e) {
+      s.mode = "idle";
+      showError(e);
     } finally {
       s.busy = false;
       render();
@@ -202,7 +204,7 @@
   async function setDevice(dev) {
     s.device = dev || null;
     // Keep the file's warnings in step with the (possibly re-flashed) device.
-    if (s.path && s.mode !== "flashing") {
+    if (s.path && s.mode !== "flashing" && !s.busy) {
       if (!s.device) {
         render();
         return;
@@ -218,20 +220,20 @@
   listen("device-changed", (ev) => {
     if (s.mode === "flashing") return; // watcher is paused; ignore strays
     setDevice(ev.payload);
-  });
+  }).catch(console.error);
   listen("flash-progress", (ev) => {
     if (s.mode !== "flashing") return;
     s.progress = ev.payload;
     if (ev.payload.cancelLocked) s.locked = true;
     render();
-  });
+  }).catch(console.error);
   listen("flash-done", (ev) => {
     s.mode = "done";
     s.locked = false;
     s.progress = null;
     s.done = ev.payload;
     render();
-  });
+  }).catch(console.error);
 
   // UI wiring
   el.flash.addEventListener("click", onFlashClick);
@@ -246,17 +248,17 @@
 
   // Drag and drop (Tauri webview events carry real paths)
   try {
-    T.webview.getCurrentWebview().onDragDropEvent((ev) => {
+    Promise.resolve(T.webview.getCurrentWebview().onDragDropEvent((ev) => {
       const p = ev.payload;
       if (s.mode === "flashing") { el.drop.classList.remove("over"); return; }
       if (p.type === "enter" || p.type === "over") el.drop.classList.add("over");
       else if (p.type === "leave") el.drop.classList.remove("over");
       else if (p.type === "drop") {
         el.drop.classList.remove("over");
-        if (p.paths && p.paths.length) inspect(p.paths[0]);
+        if (p.paths && p.paths.length && !s.busy) inspect(p.paths[0]);
       }
-    });
-  } catch (e) { /* no drag-drop support (e.g. mock) */ }
+    })).catch((e) => console.error("drag-drop failed", e));
+  } catch (e) { console.error("drag-drop unavailable", e); }
 
   render();
   invoke("get_device").then(setDevice).catch(() => {});
