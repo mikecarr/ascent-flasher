@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="description" content="Unofficial browser flasher for Caddx Ascent firmware (Chrome or Edge, Web Serial)." />
+    <title>Ascent Flasher (unofficial)</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <main class="app">
+      <header class="head">
+        <h1>Ascent Flasher</h1>
+        <span class="tag">unofficial</span>
+        <span class="tag sim" id="sim-tag" hidden>simulated device</span>
+      </header>
+
+      <p class="notice" id="no-serial" role="alert" hidden>This page needs Chrome or Edge on a computer (Web Serial). Safari and Firefox can't talk to USB serial devices.</p>
+      <noscript><p class="notice">This page needs JavaScript.</p></noscript>
+
+      <section class="card device" id="device" aria-labelledby="dev-name">
+        <div class="device-top">
+          <span class="dot" id="dot" aria-hidden="true"></span>
+          <div class="device-id">
+            <h2 class="device-name" id="dev-name">Connect your Ascent device</h2>
+            <div class="device-port" id="dev-port">Plug it in by USB, then press Connect…</div>
+          </div>
+        </div>
+        <div class="actions">
+          <button class="secondary" id="connect" type="button" disabled>Connect…</button>
+          <button class="secondary" id="info" type="button" disabled>Info</button>
+        </div>
+        <div class="note err" id="dev-error" role="alert" hidden></div>
+        <dl class="grid" id="dev-grid" hidden>
+          <div class="wide"><dt>Firmware</dt><dd id="dev-fw">–</dd></div>
+          <div><dt>Hardware</dt><dd id="dev-hw">–</dd></div>
+          <div><dt>Serial</dt><dd id="dev-sn">–</dd></div>
+          <div><dt>SDK</dt><dd id="dev-sdk">–</dd></div>
+          <div><dt>CPU °C</dt><dd id="dev-temp">–</dd></div>
+          <div><dt>Status</dt><dd id="dev-status">–</dd></div>
+          <div><dt>Packet size</dt><dd id="dev-rx">–</dd></div>
+        </dl>
+        <div class="note info" id="dev-note" hidden></div>
+        <div class="note power" id="dev-power" hidden></div>
+      </section>
+
+      <input type="file" id="file" accept=".img" hidden />
+      <button class="drop" id="drop" type="button" disabled aria-describedby="file-details">
+        <svg class="drop-icon" viewBox="0 0 24 24" width="28" height="28" aria-hidden="true">
+          <path d="M12 16V4m0 0L7 9m5-5l5 5M5 20h14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <span id="drop-text">Drop firmware .img here, or click to choose</span>
+      </button>
+      <div id="file-details" aria-live="polite">
+        <ul class="warnings" id="warnings" hidden></ul>
+        <div class="note err" id="file-error" hidden></div>
+      </div>
+
+      <button class="primary" id="flash" type="button" disabled>Flash firmware</button>
+
+      <div class="progress-wrap" id="progress-wrap" hidden>
+        <div class="bar" id="bar" role="progressbar" aria-label="Flash progress" aria-valuemin="0" aria-valuemax="100">
+          <div class="fill" id="fill"></div>
+        </div>
+      </div>
+      <div class="status" id="status" role="status" aria-live="polite"></div>
+
+      <section class="result" id="result" hidden>
+        <h2 class="result-title" id="result-title"></h2>
+        <div class="result-msg" id="result-msg"></div>
+        <div class="result-hint" id="result-hint" hidden></div>
+        <button class="secondary" id="again" type="button">Flash again</button>
+      </section>
+
+      <div class="tools">
+        <button class="link-button" id="download-log" type="button">Download log</button>
+      </div>
+
+      <footer class="foot">
+        <p>Unofficial. Not affiliated with Caddx.</p>
+        <p><a href="https://github.com/mikecarr/ascent-flasher" rel="noopener">Source and issues on GitHub</a></p>
+      </footer>
+    </main>
+
+    <dialog class="ask" id="ask" aria-labelledby="ask-title" aria-describedby="ask-text">
+      <form method="dialog">
+        <h2 id="ask-title"></h2>
+        <p id="ask-text"></p>
+        <div class="ask-buttons">
+          <button class="secondary" id="ask-cancel" value="cancel" type="submit">Cancel</button>
+          <button class="primary" id="ask-ok" value="ok" type="submit">Continue</button>
+        </div>
+      </form>
+    </dialog>
+
+    <script type="module" src="ui.js"></script>
+  </body>
+</html>
