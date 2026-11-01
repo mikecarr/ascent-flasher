@@ -38,7 +38,14 @@ pub struct SimDevice {
     pub offline_for: Duration,
     /// After this many 116 chunks are acked the device is permanently gone.
     pub unplug_after_data_chunks: Option<u32>,
+    /// Ignore (no reply) every request with this command id; once at least
+    /// one has been ignored, the next FIND_DEVICE (i.e. a reconnect) clears it.
+    pub ignore_until_find_device: Option<u32>,
+    /// If set, the offline time for the self-reboot after percent >= 100
+    /// (instead of `offline_for`).
+    pub self_reboot_offline_for: Option<Duration>,
     chunks_acked: u32,
+    ignored_any: bool,
     path: String,
     offline_until: Option<Instant>,
     gone: bool,
@@ -69,7 +76,10 @@ impl Default for SimDevice {
             reboot_moves_to: None,
             offline_for: Duration::from_millis(10),
             unplug_after_data_chunks: None,
+            ignore_until_find_device: None,
+            self_reboot_offline_for: None,
             chunks_acked: 0,
+            ignored_any: false,
             path: String::new(),
             offline_until: None,
             gone: false,
@@ -115,6 +125,13 @@ impl SimDevice {
         self.received_requests.push((h, payload.clone()));
         if self.drop_first_requests > 0 {
             self.drop_first_requests -= 1;
+            return None;
+        }
+        if h.command == Command::FindDevice.id() && self.ignored_any {
+            self.ignore_until_find_device = None;
+            self.ignored_any = false;
+        } else if self.ignore_until_find_device == Some(h.command) {
+            self.ignored_any = true;
             return None;
         }
         let ack = |p: &[u8]| Some(encode_ack(h.command, p, h.seq));
@@ -175,6 +192,9 @@ impl SimDevice {
                 let reply = ack(&st.encode());
                 if st.percent >= 100 {
                     self.go_offline();
+                    if let Some(d) = self.self_reboot_offline_for {
+                        self.offline_until = Some(Instant::now() + d);
+                    }
                 }
                 reply
             }

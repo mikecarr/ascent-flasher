@@ -6,8 +6,11 @@
 //!   dropped before reconnecting.
 //! - Cancel is honoured before every command until the decision to send
 //!   SENDFILE_END (117); after that it is ignored ([`Progress::CancelLocked`]).
-//! - Once REBOOT "clean" has been sent, any cancel or failure sends REBOOT
-//!   "normal" and tries to reconnect ("recovery").
+//! - Once REBOOT "clean" has been sent, a cancel or failure sends REBOOT
+//!   "normal" and tries to reconnect ("recovery"). After SENDFILE_END has been
+//!   sent, recovery happens only on a device-reported failure (negative status
+//!   or rejected transfer); transport errors reconnect without any reboot and
+//!   keep polling, and other failures end with `recovered: false`.
 
 use crate::command::Command;
 use crate::discovery::{reconnect, reopen_delay_for_vid};
@@ -180,6 +183,15 @@ fn chunk_size(receive_max_size: i32) -> usize {
     }
 }
 
+/// After the lock, only a device-reported failure means it has stopped
+/// writing, so only then is a recovery REBOOT "normal" safe.
+fn device_stopped_writing(e: &UpgradeError) -> bool {
+    matches!(
+        e,
+        UpgradeError::Device { .. } | UpgradeError::TransferRejected(_)
+    )
+}
+
 struct Upgrade<'a> {
     conn: &'a dyn Connector,
     opts: &'a UpgradeOptions,
@@ -312,7 +324,17 @@ impl Upgrade<'_> {
         Ok(())
     }
 
+    /// After the lock: drop the link and reconnect WITHOUT any reboot (the
+    /// device may be writing flash). Failure is final (no recovery).
+    fn reconnect_without_reboot(&mut self, why: &SessionError) -> Result<(), Stop> {
+        tracing::warn!("transport error after lock ({why}); reconnecting without reboot");
+        self.session = None;
+        self.reconnect(self.opts.reopen_delay)?;
+        Ok(())
+    }
+
     /// Step 8: SENDFILE_END; must reply status 0 / "OK". Locks cancel.
+    /// A lost or garbled reply is not a rejection: we go on polling.
     fn finish(&mut self) -> Result<(), Stop> {
         self.phase(Phase::Finishing);
         self.checkpoint()?;
@@ -320,7 +342,23 @@ impl Upgrade<'_> {
         let reply = self.session()?.request(Command::SendFileEnd, &[]);
         tracing::info!("SENDFILE_END sent; cancel is now locked");
         self.emit(Progress::CancelLocked);
-        let reply = FileDataInfo::decode(&reply?.payload)?;
+        let frame = match reply {
+            Ok(f) => f,
+            Err(e @ (SessionError::Timeout { .. } | SessionError::Io(_))) => {
+                return self.reconnect_without_reboot(&e);
+            }
+            Err(e) => {
+                tracing::warn!("SENDFILE_END reply unusable ({e}); polling status anyway");
+                return Ok(());
+            }
+        };
+        let reply = match FileDataInfo::decode(&frame.payload) {
+            Ok(r) => r,
+            Err(e) => {
+                tracing::warn!("SENDFILE_END reply undecodable ({e}); polling status anyway");
+                return Ok(());
+            }
+        };
         if reply.status != 0 || reply.detail != "OK" {
             tracing::warn!(status = reply.status, detail = %reply.detail, "transfer rejected");
             return Err(UpgradeError::TransferRejected(reply.detail).into());
@@ -328,13 +366,30 @@ impl Upgrade<'_> {
         Ok(())
     }
 
-    /// Step 9: poll UPGRADE_STATUS until percent >= 100.
+    /// Step 9: poll UPGRADE_STATUS until percent >= 100. Transport errors
+    /// reconnect (no reboot) and keep polling within the same budget.
     fn poll_status(&mut self) -> Result<(), Stop> {
         self.phase(Phase::Writing);
         for n in 1..=self.opts.max_status_polls {
             std::thread::sleep(self.opts.status_poll);
-            let f = self.session()?.request(Command::UpgradeStatus, &[])?;
-            let st = UpgradeStatus::decode(&f.payload)?;
+            let f = match self.session()?.request(Command::UpgradeStatus, &[]) {
+                Ok(f) => f,
+                Err(e @ (SessionError::Timeout { .. } | SessionError::Io(_))) => {
+                    self.reconnect_without_reboot(&e)?;
+                    continue;
+                }
+                Err(e) => {
+                    tracing::warn!(poll = n, "unusable status reply ({e})");
+                    continue;
+                }
+            };
+            let st = match UpgradeStatus::decode(&f.payload) {
+                Ok(st) => st,
+                Err(e) => {
+                    tracing::warn!(poll = n, "undecodable status reply ({e})");
+                    continue;
+                }
+            };
             tracing::info!(poll = n, percent = st.percent, status = st.status, detail = %st.detail, "upgrade status");
             self.emit(Progress::Writing {
                 percent: st.percent.clamp(0, 100) as u8,
@@ -454,6 +509,15 @@ pub fn run_upgrade(
         Err(Stop::Cancelled) => {
             let recovered = u.recover();
             Err(UpgradeError::Cancelled { recovered })
+        }
+        Err(Stop::Error(e)) if u.locked && !device_stopped_writing(&e) => {
+            // The device may still be writing flash (or has rebooted itself):
+            // never send REBOOT "normal" here.
+            tracing::warn!("upgrade failed after lock: {e}; no recovery reboot");
+            Err(UpgradeError::Failed {
+                cause: Box::new(e),
+                recovered: false,
+            })
         }
         Err(Stop::Error(e)) => {
             tracing::warn!("upgrade failed: {e}");

@@ -47,13 +47,22 @@ struct Run {
     events: Vec<Progress>,
 }
 
-fn run_with(dev: SimDevice, fw: &Firmware, mut hook: impl FnMut(&Progress, &CancelToken)) -> Run {
+fn run_with(dev: SimDevice, fw: &Firmware, hook: impl FnMut(&Progress, &CancelToken)) -> Run {
+    run_opts(dev, fw, &opts(), hook)
+}
+
+fn run_opts(
+    dev: SimDevice,
+    fw: &Firmware,
+    o: &UpgradeOptions,
+    mut hook: impl FnMut(&Progress, &CancelToken),
+) -> Run {
     let conn = SimConnector::new(PATH, VID, PID, dev);
     let port = conn.list().unwrap().remove(0);
     let cancel = CancelToken::new();
     let mut events = Vec::new();
     let c2 = cancel.clone();
-    let result = run_upgrade(&conn, &port, fw, &opts(), &cancel, &mut |p| {
+    let result = run_upgrade(&conn, &port, fw, o, &cancel, &mut |p| {
         hook(&p, &c2);
         events.push(p);
     });
@@ -330,4 +339,102 @@ fn transfer_rejected() {
         }
         other => panic!("unexpected {other:?}"),
     }
+}
+
+fn only_clean_reboots(r: &Run) {
+    let reboots = reboot_payloads(r);
+    assert!(
+        reboots.iter().all(|p| *p == reboot_mode("clean").to_vec()),
+        "unexpected reboot after lock: {reboots:?}"
+    );
+}
+
+#[test]
+fn poll_timeout_after_lock_reconnects_without_reboot() {
+    let fw = firmware(10_000);
+    let mut dev = SimDevice::lite_plus();
+    dev.ignore_until_find_device = Some(118);
+    let r = run_with(dev, &fw, |_, _| {});
+    assert!(r.result.is_ok(), "{:?}", r.result);
+    only_clean_reboots(&r);
+    let cmds = commands(&r);
+    // initial, after clean reboot, the poll reconnect, final verify
+    assert_eq!(cmds.iter().filter(|&&c| c == 60).count(), 4, "{cmds:?}");
+    let end = cmds.iter().position(|&c| c == 117).unwrap();
+    assert!(cmds[end..].contains(&60), "{cmds:?}");
+}
+
+#[test]
+fn lost_117_reply_keeps_polling() {
+    let fw = firmware(10_000);
+    let mut dev = SimDevice::lite_plus();
+    dev.ignore_until_find_device = Some(117);
+    let r = run_with(dev, &fw, |_, _| {});
+    assert!(
+        matches!(
+            r.result,
+            Ok(_)
+                | Err(UpgradeError::Failed {
+                    recovered: false,
+                    ..
+                })
+        ),
+        "{:?}",
+        r.result
+    );
+    only_clean_reboots(&r);
+    assert!(commands(&r).contains(&118));
+}
+
+#[test]
+fn poll_budget_exhausted_after_lock_no_reboot() {
+    let fw = firmware(10_000);
+    let mut dev = SimDevice::lite_plus();
+    dev.status_script = (0..50)
+        .map(|_| UpgradeStatus {
+            percent: 10,
+            status: 2,
+            detail: "OK".into(),
+        })
+        .collect();
+    let o = UpgradeOptions {
+        max_status_polls: 5,
+        ..opts()
+    };
+    let r = run_opts(dev, &fw, &o, |_, _| {});
+    match &r.result {
+        Err(
+            e @ UpgradeError::Failed {
+                cause,
+                recovered: false,
+            },
+        ) => {
+            assert!(
+                matches!(**cause, UpgradeError::StatusPollLimit),
+                "{cause:?}"
+            );
+            assert!(e.recovery_hint().is_some());
+        }
+        other => panic!("unexpected {other:?}"),
+    }
+    only_clean_reboots(&r);
+    assert_eq!(commands(&r).iter().filter(|&&c| c == 118).count(), 5);
+}
+
+#[test]
+fn final_reconnect_failure_skips_recovery() {
+    let fw = firmware(10_000);
+    let mut dev = SimDevice::lite_plus();
+    // Back only after the final reconnect (500 ms) has given up, but within
+    // the window a (wrong) recovery reconnect would still be searching.
+    dev.self_reboot_offline_for = Some(Duration::from_millis(700));
+    let r = run_with(dev, &fw, |_, _| {});
+    match &r.result {
+        Err(UpgradeError::Failed { cause, recovered }) => {
+            assert!(!*recovered);
+            assert!(matches!(**cause, UpgradeError::Reconnect), "{cause:?}");
+        }
+        other => panic!("unexpected {other:?}"),
+    }
+    only_clean_reboots(&r);
 }
