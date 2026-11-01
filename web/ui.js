@@ -1,7 +1,7 @@
 // The flasher page: layout and state machine from the Mac app (app/ui/main.js),
 // with the Tauri backend replaced by direct calls into web/lib.
 import { modelFor, canFlash, isLocalHost } from "./lib/models.js";
-import { preflight, warningText, formatVersion, PreflightError } from "./lib/firmware.js";
+import { preflight, warningText, formatVersion, PreflightError, restartMismatch } from "./lib/firmware.js";
 import { realClock } from "./lib/clock.js";
 import { PortBusyError } from "./lib/link.js";
 import { SimConnector } from "./lib/sim.js";
@@ -560,7 +560,16 @@ async function flash({ fw, device, model, confirmedFirmware }) {
       log: log.line,
     });
     log.line(`flash complete: device reports ${r.firmware}`);
-    done = { kind: "ok", title: "Flash complete", message: `The device now reports ${r.firmware}.`, hint: null };
+    const mismatch = restartMismatch(r.firmware, fw.firmware.version);
+    if (mismatch) {
+      log.line(`warn: ${mismatch}`);
+      done = {
+        kind: "warn", title: "Check the version", message: mismatch,
+        hint: "Press Info to re-read the unit. If it still reports the old version, flash the file again.",
+      };
+    } else {
+      done = { kind: "ok", title: "Flash complete", message: `The device now reports ${r.firmware}.`, hint: null };
+    }
   } catch (e) {
     done = resultFor(e);
     log.line(`flash ended: ${e?.kind ?? e?.name ?? "error"}: ${e?.message ?? e}`);

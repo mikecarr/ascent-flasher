@@ -43,6 +43,19 @@ export function formatVersion(v) {
   return `V${v.major}.${v.minor}.${v.patch}${v.extra === null ? "" : `.${v.extra}`}`;
 }
 
+/**
+ * After a flash (spec step 7, as the CLI): null when the restarted unit
+ * reports the file's version (or the file's version is unknown), otherwise
+ * the warning text.
+ */
+export function restartMismatch(deviceFirmware, fileVer) {
+  if (!fileVer) return null;
+  const dev = deviceVersion(deviceFirmware);
+  if (dev && compareVersions(dev, fileVer) === 0) return null;
+  const shown = dev ? formatVersion(dev) : deviceFirmware;
+  return `The unit restarted but reports ${shown}; the file was ${formatVersion(fileVer)}.`;
+}
+
 const isDigits = (t) => /^[0-9]+$/.test(t);
 
 // Original-case prefix tokens of the device firmware (up to three trailing

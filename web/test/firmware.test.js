@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   MAX_FIRMWARE_BYTES, REMOTE_DIR, fileVersion, deviceVersion, compareVersions,
-  formatVersion, nameMatches, warningText, PreflightError, preflight,
+  formatVersion, nameMatches, warningText, PreflightError, preflight, restartMismatch,
 } from "../lib/firmware.js";
 
 const v = (major, minor, patch, extra = null) => ({ major, minor, patch, extra });
@@ -160,4 +160,23 @@ test("unconfirmed model can flash only on localhost (preflight)", async () => {
   const f = file("Ascent_H_Sky_17_6_0.img");
   assert.equal(await kind(preflight(dev, f, "mikecarr.github.io")), "notFlashable");
   assert.ok((await preflight(dev, f, "127.0.0.1")).firmware);
+});
+
+// Final fix wave R9: spec step 7 / CLI main.rs version check after the restart.
+test("restartMismatch compares the restarted unit's version with the file's", () => {
+  // Same version: no warning.
+  assert.equal(restartMismatch("Ascent_H_Sky_18_21_10", v(18, 21, 10)), null);
+  // Unit came back on the old firmware.
+  assert.equal(
+    restartMismatch("Ascent_H_Sky_18_21_8", v(18, 21, 10)),
+    "The unit restarted but reports V18.21.8; the file was V18.21.10.",
+  );
+  // Device version unparseable while the file's is known: warn with the raw string.
+  assert.equal(
+    restartMismatch("Ascent", v(18, 21, 10)),
+    "The unit restarted but reports Ascent; the file was V18.21.10.",
+  );
+  // File version unknown: nothing to compare.
+  assert.equal(restartMismatch("Ascent_H_Sky_18_21_8", null), null);
+  assert.equal(restartMismatch("Ascent", null), null);
 });
