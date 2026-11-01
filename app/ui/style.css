@@ -98,14 +98,10 @@ button { font: inherit; }
 .result { border-radius: 14px; padding: 14px 16px; border: 1px solid var(--border); background: var(--card); user-select: text; -webkit-user-select: text; }
 .result.ok { border-color: var(--ok); background: var(--ok-soft); }
 .result.err { border-color: var(--err); background: var(--err-soft); }
-.result.neutral { border-color: var(--muted); }
-.result.neutral .result-title { color: var(--muted); }
+.result.neutral { border-color: var(--muted); background: var(--track); }
 .result-title { font-weight: 650; margin-bottom: 4px; }
-.result.ok .result.neutral { border-color: var(--muted); }
+.result.ok .result-title { color: var(--ok); }
+.result.err .result-title { color: var(--err); }
 .result.neutral .result-title { color: var(--muted); }
-.result-title { color: var(--ok); }
-.result.err .result.neutral { border-color: var(--muted); }
-.result.neutral .result-title { color: var(--muted); }
-.result-title { color: var(--err); }
 .result-hint { margin-top: 8px; font-size: 13px; color: var(--muted); }
 [hidden] { display: none !important; }
