@@ -56,6 +56,7 @@ fn main() {
         current: Mutex::new(None),
         flashing: AtomicBool::new(false),
         rescan: AtomicBool::new(false),
+        scan_lock: Mutex::new(()),
         cancel: Mutex::new(None),
         _log_guard: Some(guard),
     });

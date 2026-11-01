@@ -179,6 +179,9 @@ pub struct AppState {
     pub current: Mutex<Option<(FoundDevice, usize)>>,
     pub flashing: AtomicBool,
     pub rescan: AtomicBool,
+    /// Held by the watcher for a whole probe, and by the flash thread for the
+    /// whole flash, so the watcher never opens a port during a flash.
+    pub scan_lock: Mutex<()>,
     pub cancel: Mutex<Option<CancelToken>>,
     /// Keeps the log writer alive for the app lifetime.
     pub _log_guard: Option<tracing_appender::non_blocking::WorkerGuard>,
@@ -206,6 +209,27 @@ fn candidate_set(conn: &dyn Connector) -> Vec<(String, u16, u16)> {
     v
 }
 
+type CandidateSet = Vec<(String, u16, u16)>;
+
+/// List and probe candidates under `scan_lock`. Returns None (touching nothing)
+/// if a flash is running, checked again after the lock is acquired.
+fn guarded_scan(
+    conn: &dyn Connector,
+    flashing: &AtomicBool,
+    scan_lock: &Mutex<()>,
+) -> Option<(CandidateSet, Vec<FoundDevice>)> {
+    let _lock = scan_lock.lock().unwrap_or_else(|e| e.into_inner());
+    if flashing.load(Ordering::SeqCst) {
+        return None;
+    }
+    let set = candidate_set(conn);
+    let found = find_devices(conn, AckTiming::default())
+        .into_iter()
+        .filter_map(Result::ok)
+        .collect();
+    Some((set, found))
+}
+
 /// Poll the port list every second; re-probe when the candidate set changes.
 pub fn spawn_watcher(app: AppHandle, state: Arc<AppState>) {
     std::thread::spawn(move || {
@@ -217,7 +241,11 @@ pub fn spawn_watcher(app: AppHandle, state: Arc<AppState>) {
             if state.flashing.load(Ordering::SeqCst) {
                 continue;
             }
-            let set = candidate_set(state.conn.as_ref());
+            let Some((set, found)) =
+                guarded_scan(state.conn.as_ref(), &state.flashing, &state.scan_lock)
+            else {
+                continue;
+            };
             let forced = state.rescan.swap(false, Ordering::SeqCst);
             // Retry a few times when candidates exist but none answered yet.
             let retry = unanswered > 0 && unanswered < 5;
@@ -225,10 +253,6 @@ pub fn spawn_watcher(app: AppHandle, state: Arc<AppState>) {
                 continue;
             }
             last = Some(set.clone());
-            let found: Vec<FoundDevice> = find_devices(state.conn.as_ref(), AckTiming::default())
-                .into_iter()
-                .filter_map(Result::ok)
-                .collect();
             let chosen = choose_device(found);
             unanswered = if chosen.is_none() && !set.is_empty() {
                 unanswered + 1
@@ -293,6 +317,8 @@ pub fn start_flash(app: AppHandle, state: Arc<AppState>, path: String) -> Result
 
     std::thread::spawn(move || {
         let _guard = guard;
+        // Wait for any in-flight watcher probe; hold the lock for the whole flash.
+        let _scan = state.scan_lock.lock().unwrap_or_else(|e| e.into_inner());
         let mut opts = UpgradeOptions::for_port(&device.port);
         if state.simulate {
             opts.reopen_delay = Duration::from_millis(50);
@@ -435,6 +461,34 @@ mod tests {
         assert_eq!(d.message, "upgrade cancelled (device unchanged)");
         let d = done_err(&UpgradeError::Cancelled { recovered: false });
         assert!(d.hint.is_some());
+    }
+
+    #[test]
+    fn scan_is_excluded_while_flash_holds_lock() {
+        use ascent_proto::sim::{SimConnector, SimDevice};
+        let conn = Arc::new(SimConnector::new(
+            "/dev/cu.usbmodemSIM1",
+            0x1D6B,
+            0x0104,
+            SimDevice::lite_plus(),
+        ));
+        let flashing = Arc::new(AtomicBool::new(true));
+        let lock = Arc::new(Mutex::new(()));
+        let held = lock.lock().unwrap(); // the "flash" owns the lock
+        let (c, f, l) = (conn.clone(), flashing.clone(), lock.clone());
+        let h = std::thread::spawn(move || guarded_scan(c.as_ref(), &f, &l).is_none());
+        std::thread::sleep(Duration::from_millis(150));
+        assert!(!h.is_finished(), "scan must wait for the lock");
+        assert!(conn.device.lock().unwrap().log.is_empty());
+        drop(held);
+        // Flash still flagged: the scan skips without opening any port.
+        assert!(h.join().unwrap());
+        assert!(conn.device.lock().unwrap().log.is_empty());
+        // Flash over: the scan probes.
+        flashing.store(false, Ordering::SeqCst);
+        let (set, found) = guarded_scan(conn.as_ref(), &flashing, &lock).unwrap();
+        assert_eq!((set.len(), found.len()), (1, 1));
+        assert!(!conn.device.lock().unwrap().log.is_empty());
     }
 
     #[test]
