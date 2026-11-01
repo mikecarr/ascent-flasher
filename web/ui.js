@@ -119,7 +119,8 @@ const s = {
 
 const sim = pickSim();
 const baseConnector = sim
-  ? new SimConnector(realClock, "sim-1", sim.scenario.vid, sim.scenario.pid, sim.scenario.device)
+  // Like Chrome: every reboot gives the unit a new port id.
+  ? new SimConnector(realClock, "sim-1", sim.scenario.vid, sim.scenario.pid, { newPortIdEachReboot: true, ...sim.scenario.device })
   : new WebSerialConnector(globalThis.navigator?.serial, log.line);
 s.supported = !!sim || !!globalThis.navigator?.serial;
 
@@ -577,6 +578,7 @@ async function flash({ fw, device, model, confirmedFirmware }) {
     guards.disarm();
     cancelToken = null;
     finish(done ?? { kind: "err", title: "Flash failed", message: "Unexpected error.", hint: null });
+    forgetDevice(); // its port object is stale after the reboots
     watcher.resume(); // re-scan: a finished flash changes the device
   }
 }
@@ -615,6 +617,22 @@ function finish(done) {
   s.cancelling = false;
   s.progress = null;
   s.busy = false;
+  render();
+}
+
+/**
+ * Drop the device and file check from before the flash: Chrome gives the
+ * unit a new port on every reboot, so "Flash again" must wait for the
+ * watcher's fresh scan (which re-runs the file check).
+ */
+function forgetDevice() {
+  checkSeq++; // a check still in flight belongs to the old device
+  s.device = null;
+  s.deviceError = null;
+  s.fw = null;
+  s.fileError = null;
+  s.checking = false;
+  s.checkedFor = null;
   render();
 }
 
