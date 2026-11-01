@@ -124,7 +124,7 @@ observed on real hardware are documented in
 - `crates/ascent-cli`: the `ascent-flash` command-line tool.
 
 ```sh
-node --test web/test/                                    # web tests
+node --test "web/test/*.test.js"                         # web tests
 cargo test --workspace                                   # Rust tests
 cargo clippy --workspace --all-targets -- -D warnings
 ```

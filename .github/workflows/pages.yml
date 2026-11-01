@@ -20,7 +20,7 @@ jobs:
         with:
           node-version: 22
       - name: Run web tests
-        run: node --test web/test/
+        run: node --test "web/test/*.test.js"
       - name: Assemble site
         run: |
           mkdir _site
