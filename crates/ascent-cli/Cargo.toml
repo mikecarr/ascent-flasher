@@ -12,3 +12,4 @@ path = "src/main.rs"
 [dependencies]
 ascent-proto = { path = "../ascent-proto", features = ["sim", "logging", "serial"] }
 clap = { version = "4", features = ["derive"] }
+ctrlc = "3"

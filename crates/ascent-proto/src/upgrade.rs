@@ -123,17 +123,53 @@ pub enum UpgradeError {
     Device { code: i32, message: &'static str },
     #[error("device rejected the transfer: {0}")]
     TransferRejected(String),
-    #[error("upgrade cancelled")]
+    #[error("upgrade cancelled{}", recovery_note(*recovered))]
     Cancelled { recovered: bool },
     #[error("could not reconnect to the device")]
     Reconnect,
     #[error("device did not finish writing the firmware in time")]
     StatusPollLimit,
-    #[error("{cause}")]
+    #[error("{cause}{}", recovery_note(*recovered))]
     Failed {
         cause: Box<UpgradeError>,
         recovered: bool,
     },
+}
+
+fn recovery_note(recovered: bool) -> &'static str {
+    if recovered {
+        " (device was returned to normal mode)"
+    } else {
+        ""
+    }
+}
+
+/// Plain-words text for a progress event, shared by the CLI and GUI.
+/// Percent-bearing events (`Sent`, `Writing`) end in `NN%`.
+pub fn progress_text(p: &Progress) -> Option<String> {
+    Some(match p {
+        Progress::Phase(ph) => match ph {
+            Phase::Rebooting => "Rebooting into upgrade mode…".into(),
+            Phase::Reconnecting => "Reconnecting…".into(),
+            Phase::EnteringUpgrade => "Entering upgrade mode…".into(),
+            Phase::StartingTransfer => "Starting transfer…".into(),
+            Phase::Sending => "Sending firmware… 0%".into(),
+            Phase::Finishing => "Finishing transfer…".into(),
+            Phase::Writing => "Device is writing firmware… 0%".into(),
+            Phase::Restarting => "Restarting…".into(),
+            Phase::Verifying => "Verifying…".into(),
+        },
+        Progress::Sent { bytes, total } => {
+            let pct = if *total == 0 {
+                100
+            } else {
+                bytes * 100 / total
+            };
+            format!("Sending firmware… {pct}%")
+        }
+        Progress::Writing { percent } => format!("Device is writing firmware… {percent}%"),
+        Progress::CancelLocked => "Device is writing firmware — do not unplug".into(),
+    })
 }
 
 impl UpgradeError {
