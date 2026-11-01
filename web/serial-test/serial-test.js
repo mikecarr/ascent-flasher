@@ -3,9 +3,26 @@
 // Sends nothing else; never sends firmware.
 
 import {
-  CMD, CANDIDATE_VIDS, FrameReader, decodeDeviceInfo, encodeRequest,
-  isLiteFamily, rebootPayload,
-} from "./ar-protocol.js";
+  CMD, FrameReader, decodeDeviceInfo, encodeRequest, rebootPayload,
+} from "../lib/protocol.js";
+
+/** Only these device names may be sent the test reboot (as in the app). */
+function isLiteFamily(name) {
+  const n = name.toLowerCase();
+  return n === "ascent_lite" || n === "ascent_lite_plus";
+}
+
+/** USB vendor IDs the Ascent tools treat as candidates. */
+const CANDIDATE_VIDS = [
+  ...range(0x1d6b, 0x1d7b),
+  ...range(0x1d80, 0x1d84),
+];
+
+function range(a, b) {
+  const r = [];
+  for (let i = a; i <= b; i++) r.push(i);
+  return r;
+}
 
 const BAUD = 115200;
 const RESEND_MS = 2000;
