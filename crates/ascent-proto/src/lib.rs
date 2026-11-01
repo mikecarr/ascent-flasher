@@ -2,8 +2,12 @@
 
 pub mod command;
 pub mod frame;
+pub mod link;
 pub mod payload;
 pub mod reader;
+pub mod session;
+#[cfg(feature = "sim")]
+pub mod sim;
 
 pub use command::Command;
 pub use payload::{
@@ -11,6 +15,9 @@ pub use payload::{
 };
 
 pub use frame::{
-    decode_header, encode_request, frame_crc, Frame, Header, HEADER_LEN, MAGIC, MAX_FRAME_LEN,
-    UNUSED, VERSION,
+    decode_header, encode_ack, encode_request, frame_crc, Frame, Header, HEADER_LEN, MAGIC,
+    MAX_FRAME_LEN, UNUSED, VERSION,
 };
+pub use link::{Connector, Link, PortInfo};
+pub use reader::FrameReader;
+pub use session::{AckTiming, Session, SessionError};

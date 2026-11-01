@@ -44,3 +44,20 @@ fn rejects_bad_magic() {
     hdr[0] ^= 0xFF;
     assert!(decode_header(&hdr).is_none());
 }
+
+#[test]
+fn encodes_ack_type() {
+    let f = encode_ack(60, &[1, 2, 3], 9);
+    let hdr: [u8; 36] = f[..36].try_into().unwrap();
+    let h = decode_header(&hdr).unwrap();
+    assert_eq!(h.msg_type, 2);
+    assert_eq!(h.command, 60);
+    assert_eq!(h.format, 2);
+    assert_eq!(h.length, 3);
+    assert_eq!(h.seq, 9);
+    assert_eq!(h.retry, 0);
+    let mut zeroed = hdr;
+    zeroed[32..36].fill(0);
+    assert_eq!(h.crc32, frame_crc(&zeroed, &[1, 2, 3]));
+    assert_eq!(&f[36..], &[1, 2, 3]);
+}

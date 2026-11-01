@@ -40,12 +40,11 @@ pub fn frame_crc(header36_with_crc_zeroed: &[u8], payload: &[u8]) -> u32 {
     h.finalize()
 }
 
-/// Encode a request frame (type 1, binary format 2).
-pub fn encode_request(command: u32, payload: &[u8], seq: u32, retry: u32) -> Vec<u8> {
+fn encode_frame(msg_type: u16, command: u32, payload: &[u8], seq: u32, retry: u32) -> Vec<u8> {
     let mut out = Vec::with_capacity(HEADER_LEN + payload.len());
     out.extend_from_slice(&MAGIC.to_le_bytes());
     out.extend_from_slice(&VERSION.to_le_bytes());
-    out.extend_from_slice(&1u16.to_le_bytes()); // type: request
+    out.extend_from_slice(&msg_type.to_le_bytes());
     out.extend_from_slice(&0u16.to_le_bytes()); // msgid
     out.extend_from_slice(&UNUSED.to_le_bytes());
     out.extend_from_slice(&command.to_le_bytes());
@@ -59,6 +58,16 @@ pub fn encode_request(command: u32, payload: &[u8], seq: u32, retry: u32) -> Vec
     out[32..36].copy_from_slice(&crc.to_le_bytes());
     out.extend_from_slice(payload);
     out
+}
+
+/// Encode a request frame (type 1, binary format 2).
+pub fn encode_request(command: u32, payload: &[u8], seq: u32, retry: u32) -> Vec<u8> {
+    encode_frame(1, command, payload, seq, retry)
+}
+
+/// Encode an ack/reply frame (type 2, binary format 2, retry 0).
+pub fn encode_ack(command: u32, payload: &[u8], seq: u32) -> Vec<u8> {
+    encode_frame(2, command, payload, seq, 0)
 }
 
 /// Decode a 36-byte header. Returns `None` if the magic is wrong.
