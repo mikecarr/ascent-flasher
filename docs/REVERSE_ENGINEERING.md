@@ -38,6 +38,26 @@ None of these are needed to talk to the device.
   - The consumer "C" build only accepts `ascent_lite`, `ascent_lite_plus`, `ascent_vrx`, `ascent_vrx_pro`, `caddxsimgm`, `caddx_gm3`, `caddx_gm1`. This is UI gating, not something the protocol enforces.
 - After a reboot, the tool waits a per-VID delay before reopening the port (`GD.cs`): 8000 ms by default, 9500–12000 ms for VRX/GT Pro, 6000 ms for the gimbal. The port name can change, so it re-finds the port by VID/PID.
 
+### Observed on real hardware (2026-10-31, user's "Ascent Lite+" VTX, macOS)
+
+`ascent-flash info` output:
+
+| Field | Value |
+|---|---|
+| port | `/dev/cu.usbmodemCX201` |
+| VID:PID | **`1D76:0101`**. The original's table calls 0x1D76 "Ascent GT Pro", so **the VID does not reliably identify the product**. Always confirm with FIND_DEVICE. |
+| USB serial | `CX20` |
+| devicename | `Ascent_lite` (mixed case) |
+| firmwareInfo | `Ascent_H_Sky_17_5_8`. Version 17.5.8; the name prefix for the filename check is `H_Sky`. |
+| hardwareVersion | `FPV-Ascent-Sky-482-V1.3-1.0` (matches the "H SKY482" family) |
+| sdkversion, serialNumber | empty |
+| receiveMaxSize | `1048576`. This is **bytes** (1 MiB chunks), the same as the original's default. |
+| cputemp | 48 |
+| status / detail | 0 / `OK` |
+
+- **Seq echo:** the device echoes the request seq in its ack (`echoes_seq = yes`).
+- **Reopen delay:** the original would wait 11500 ms for this device, because it keys the delay on VID 0x1D76.
+
 ## 3. Ascent ("AR"/Artosyn) serial protocol — the main one
 
 Used by all Ascent goggles, VRX, VTX and the GM V2 gimbals.
