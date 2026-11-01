@@ -234,6 +234,25 @@ Our tool doesn't support the `Ascent_R_Sky_` multi-part flow; it would need its 
 | UPGRADE_STATUS (118) | polled at 1 s: 38 % → 79 % → 79 % → 100 %. Status 2 (IN_PROGRESS) while writing, 3 (DONE) at the end; detail empty |
 | self-reboot | back after the 11.5 s wait; FIND_DEVICE reported `Ascent_H_Sky_17_5_8` |
 | totals | about 30 s end to end; no CRC warnings; seq echoed on every reply |
+
+### Deliberate cancel (2026-11-01, Ascent Lite, app, file `Ascent_H_Sky_18_21_10.img`, device on 17.5.8)
+
+Cancel was pressed during "Reconnecting…", after REBOOT "clean".
+
+| Step | Observed |
+|---|---|
+| clean-mode FIND_DEVICE | after the 11.5 s wait: `devicename "Ascent"` (not `Ascent_lite`), `cpu_temp 0`, firmware still `Ascent_H_Sky_17_5_8`, `hardware_version "FPV-Edu-Sky-V0.0-0.0"`, empty serial, `receiveMaxSize 1048576`, seq echoed |
+| cancel | taken at the first check after the reconnect, before REMOTE_UPGRADE; nothing was sent to flash |
+| REBOOT "normal" (recovery) | **ignored**: the device kept its USB link and kept answering in clean mode for the whole 11.5 s drop window. The tool reported "not recovered" as designed |
+| way out | power-cycle (USB and battery); firmware unchanged |
+
+So on the Lite, clean mode does not act on REBOOT "normal". That matches the Windows tool sending it only for VRX/GT Pro. On this device the recovery hint (power-cycle) is the real recovery path.
+
+### Upgrade through the app (2026-11-01, Ascent Lite, 17.5.8 → 18.21.10)
+
+After the cancel and a power cycle, the app flashed `Ascent_H_Sky_18_21_10.img` (15.6 MB, 15 chunks) in about 30 s: transfer 1.3 s, SENDFILE_END reply in 420 ms, UPGRADE_STATUS 38 → 59 → 79 → 79 → 100 %, back after the 11.5 s wait reporting `Ascent_lite` on `Ascent_H_Sky_18_21_10`. The protocol is unchanged in 18.21.10.
+
+The cancel is only checked between steps, so it can take up to the 11.5 s reconnect wait to act. The app now keeps the button in a "Cancelling…" state until then (the first test needed two presses because the status line was redrawn back to "Reconnecting…").
 - The exact format of `fpv_bb_freq.bin`, and whether 120 replies with cmd 120 or 116 (the code handles both).
 - The firmware container format (`.img` for Ascent, `.bin` for gimbals). The device validates it (board type, version, CRC); the PC sends it as-is.
 

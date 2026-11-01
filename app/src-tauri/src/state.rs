@@ -255,26 +255,45 @@ fn candidate_set(conn: &dyn Connector) -> Vec<(String, u16, u16)> {
 
 type CandidateSet = Vec<(String, u16, u16)>;
 
-/// List and probe candidates under `scan_lock`. Returns None (touching nothing)
-/// if a flash is running, checked again after the lock is acquired.
+/// List candidates under `scan_lock`, then probe them only if `probe` says so.
+/// Returns None (touching nothing) if a flash is running, checked again after
+/// the lock is acquired. `found` is None when the probe was skipped.
 fn guarded_scan(
     conn: &dyn Connector,
     flashing: &AtomicBool,
     scan_lock: &Mutex<()>,
-) -> Option<(CandidateSet, Vec<FoundDevice>)> {
+    probe: impl FnOnce(&CandidateSet) -> bool,
+) -> Option<(CandidateSet, Option<Vec<FoundDevice>>)> {
     let _lock = scan_lock.lock().unwrap_or_else(|e| e.into_inner());
     if flashing.load(Ordering::SeqCst) {
         return None;
     }
     let set = candidate_set(conn);
+    if !probe(&set) {
+        return Some((set, None));
+    }
     let found = find_devices(conn, AckTiming::default())
         .into_iter()
         .filter_map(Result::ok)
         .collect();
-    Some((set, found))
+    Some((set, Some(found)))
 }
 
-/// Poll the port list every second; re-probe when the candidate set changes.
+/// Whether the watcher should send FIND_DEVICE this tick: the candidate set
+/// changed, a re-scan was requested, or candidates exist that haven't answered
+/// yet (a few retries only).
+fn should_probe(
+    last: Option<&CandidateSet>,
+    set: &CandidateSet,
+    forced: bool,
+    unanswered: u32,
+) -> bool {
+    let retry = unanswered > 0 && unanswered < 5;
+    forced || retry || last != Some(set)
+}
+
+/// Poll the port list every second; probe only when the candidate set changes
+/// (or on a requested re-scan / early retry), so an idle device isn't queried.
 pub fn spawn_watcher(app: AppHandle, state: Arc<AppState>) {
     std::thread::spawn(move || {
         let mut last: Option<Vec<(String, u16, u16)>> = None;
@@ -285,17 +304,19 @@ pub fn spawn_watcher(app: AppHandle, state: Arc<AppState>) {
             if state.flashing.load(Ordering::SeqCst) {
                 continue;
             }
-            let Some((set, found)) =
-                guarded_scan(state.conn.as_ref(), &state.flashing, &state.scan_lock)
-            else {
+            let mut forced = false;
+            let scan = guarded_scan(
+                state.conn.as_ref(),
+                &state.flashing,
+                &state.scan_lock,
+                |set| {
+                    forced = state.rescan.swap(false, Ordering::SeqCst);
+                    should_probe(last.as_ref(), set, forced, unanswered)
+                },
+            );
+            let Some((set, Some(found))) = scan else {
                 continue;
             };
-            let forced = state.rescan.swap(false, Ordering::SeqCst);
-            // Retry a few times when candidates exist but none answered yet.
-            let retry = unanswered > 0 && unanswered < 5;
-            if !forced && !retry && last.as_ref() == Some(&set) {
-                continue;
-            }
             last = Some(set.clone());
             let chosen = choose_device(found);
             unanswered = if chosen.is_none() && !set.is_empty() {
@@ -539,7 +560,7 @@ mod tests {
         let lock = Arc::new(Mutex::new(()));
         let held = lock.lock().unwrap(); // the "flash" owns the lock
         let (c, f, l) = (conn.clone(), flashing.clone(), lock.clone());
-        let h = std::thread::spawn(move || guarded_scan(c.as_ref(), &f, &l).is_none());
+        let h = std::thread::spawn(move || guarded_scan(c.as_ref(), &f, &l, |_| true).is_none());
         std::thread::sleep(Duration::from_millis(150));
         assert!(!h.is_finished(), "scan must wait for the lock");
         assert!(conn.device.lock().unwrap().log.is_empty());
@@ -549,9 +570,40 @@ mod tests {
         assert!(conn.device.lock().unwrap().log.is_empty());
         // Flash over: the scan probes.
         flashing.store(false, Ordering::SeqCst);
-        let (set, found) = guarded_scan(conn.as_ref(), &flashing, &lock).unwrap();
-        assert_eq!((set.len(), found.len()), (1, 1));
+        let (set, found) = guarded_scan(conn.as_ref(), &flashing, &lock, |_| true).unwrap();
+        assert_eq!((set.len(), found.map(|f| f.len())), (1, Some(1)));
         assert!(!conn.device.lock().unwrap().log.is_empty());
+    }
+
+    #[test]
+    fn unchanged_port_list_is_not_probed() {
+        use ascent_proto::sim::{SimConnector, SimDevice};
+        let conn = SimConnector::new(
+            "/dev/cu.usbmodemSIM1",
+            0x1D6B,
+            0x0104,
+            SimDevice::lite_plus(),
+        );
+        let (flashing, lock) = (AtomicBool::new(false), Mutex::new(()));
+        let (set, found) = guarded_scan(&conn, &flashing, &lock, |_| true).unwrap();
+        assert!(found.is_some());
+        conn.device.lock().unwrap().log.clear();
+        let decide = |s: &CandidateSet| should_probe(Some(&set), s, false, 0);
+        let (_, found) = guarded_scan(&conn, &flashing, &lock, decide).unwrap();
+        assert!(found.is_none());
+        assert!(conn.device.lock().unwrap().log.is_empty(), "no frames sent");
+    }
+
+    #[test]
+    fn probe_decision() {
+        let a: CandidateSet = vec![("/dev/cu.a".into(), 0x1D76, 0x0101)];
+        assert!(should_probe(None, &a, false, 0), "first scan");
+        assert!(!should_probe(Some(&a), &a, false, 0), "unchanged");
+        assert!(should_probe(Some(&vec![]), &a, false, 0), "plugged in");
+        assert!(should_probe(Some(&a), &vec![], false, 0), "unplugged");
+        assert!(should_probe(Some(&a), &a, true, 0), "forced re-scan");
+        assert!(should_probe(Some(&a), &a, false, 1), "early retry");
+        assert!(!should_probe(Some(&a), &a, false, 5), "retries exhausted");
     }
 
     #[test]

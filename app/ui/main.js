@@ -23,6 +23,7 @@
     path: null,          // chosen firmware path
     fw: null,            // FirmwareView for the chosen path
     locked: false,       // cancelLocked
+    cancelling: false,   // Cancel pressed; waiting for the flasher to stop
     busy: false,         // confirm dialogs / start_flash in flight
     done: null,          // FlashDone
     progress: null,      // last ProgressEvent
@@ -78,6 +79,9 @@
       if (s.locked) {
         el.flash.textContent = "Device is writing firmware — do not unplug";
         el.flash.disabled = true;
+      } else if (s.cancelling) {
+        el.flash.textContent = "Cancelling…";
+        el.flash.disabled = true;
       } else {
         el.flash.textContent = "Cancel";
         el.flash.classList.add("cancel");
@@ -101,7 +105,9 @@
       el.fill.style.width = "";
       el.bar.removeAttribute("aria-valuenow");
     }
-    el.status.textContent = flashing ? (p ? p.text : "Starting…") : "";
+    el.status.textContent = !flashing ? ""
+      : s.cancelling && !s.locked ? "Cancelling — finishing the current step, then restoring the device…"
+      : p ? p.text : "Starting…";
 
     // Close/quit refused while flashing
     const cb = flashing && s.closeBlocked;
@@ -136,6 +142,7 @@
     s.done = null;
     s.progress = null;
     s.locked = false;
+    s.cancelling = false;
     render();
   }
 
@@ -175,9 +182,12 @@
 
   async function onFlashClick() {
     if (s.mode === "flashing") {
-      if (!s.locked) {
+      if (!s.locked && !s.cancelling) {
+        // The flasher stops at its next safe point, which can be ~12 s away
+        // (e.g. while waiting for the VTX to come back), so keep showing it.
+        s.cancelling = true;
+        render();
         try { await invoke("cancel_flash"); } catch (e) { /* ignore */ }
-        el.status.textContent = "Cancelling…";
       }
       return;
     }
@@ -200,6 +210,7 @@
       if (!go) return;
       s.mode = "flashing";
       s.locked = false;
+      s.cancelling = false;
       s.progress = null;
       s.done = null;
       s.closeBlocked = null;
@@ -248,6 +259,7 @@
   listen("flash-done", (ev) => {
     s.mode = "done";
     s.locked = false;
+    s.cancelling = false;
     s.closeBlocked = null;
     s.progress = null;
     s.done = ev.payload;
