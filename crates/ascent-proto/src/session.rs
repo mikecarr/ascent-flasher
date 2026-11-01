@@ -154,8 +154,12 @@ impl Session {
         }
     }
 
+    /// FIND_DEVICE; the complete reply is logged at INFO (it records e.g.
+    /// what the device reports in clean/upgrade mode).
     pub fn find_device(&mut self) -> Result<DeviceInfo, SessionError> {
         let f = self.request(Command::FindDevice, &[])?;
-        Ok(DeviceInfo::decode(&f.payload)?)
+        let info = DeviceInfo::decode(&f.payload)?;
+        tracing::info!(info = ?info, "FIND_DEVICE reply");
+        Ok(info)
     }
 }

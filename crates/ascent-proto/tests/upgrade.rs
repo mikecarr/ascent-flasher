@@ -24,6 +24,7 @@ fn opts() -> UpgradeOptions {
         reconnect_retry: Duration::from_millis(5),
         status_poll: Duration::from_millis(5),
         max_status_polls: 200,
+        writing_timeout: Duration::from_secs(10),
     }
 }
 
@@ -55,6 +56,17 @@ fn run_opts(
     dev: SimDevice,
     fw: &Firmware,
     o: &UpgradeOptions,
+    hook: impl FnMut(&Progress, &CancelToken),
+) -> Run {
+    let expected = dev.info.clone();
+    run_expect(dev, &expected, fw, o, hook)
+}
+
+fn run_expect(
+    dev: SimDevice,
+    expected: &DeviceInfo,
+    fw: &Firmware,
+    o: &UpgradeOptions,
     mut hook: impl FnMut(&Progress, &CancelToken),
 ) -> Run {
     let conn = SimConnector::new(PATH, VID, PID, dev);
@@ -62,7 +74,7 @@ fn run_opts(
     let cancel = CancelToken::new();
     let mut events = Vec::new();
     let c2 = cancel.clone();
-    let result = run_upgrade(&conn, &port, fw, o, &cancel, &mut |p| {
+    let result = run_upgrade(&conn, &port, expected, fw, o, &cancel, &mut |p| {
         hook(&p, &c2);
         events.push(p);
     });
@@ -128,6 +140,7 @@ fn reopen_delays_by_vid() {
     assert_eq!(d.reconnect_retry, Duration::from_secs(1));
     assert_eq!(d.status_poll, Duration::from_secs(1));
     assert_eq!(d.max_status_polls, 200);
+    assert_eq!(d.writing_timeout, Duration::from_secs(300));
     assert_eq!(o.reconnect_timeout, d.reconnect_timeout);
 }
 
@@ -290,19 +303,28 @@ fn cancel_locked_is_emitted_before_117_request() {
     let conn = SimConnector::new(PATH, VID, PID, SimDevice::lite_plus());
     let port = conn.list().unwrap().remove(0);
     let dev = conn.device.clone();
+    let expected = dev.lock().unwrap().info.clone();
     let mut ends_at_lock = None;
-    let r = run_upgrade(&conn, &port, &fw, &opts(), &CancelToken::new(), &mut |p| {
-        if matches!(p, Progress::CancelLocked) {
-            let n = dev
-                .lock()
-                .unwrap()
-                .log
-                .iter()
-                .filter(|h| h.command == 117)
-                .count();
-            ends_at_lock = Some(n);
-        }
-    });
+    let r = run_upgrade(
+        &conn,
+        &port,
+        &expected,
+        &fw,
+        &opts(),
+        &CancelToken::new(),
+        &mut |p| {
+            if matches!(p, Progress::CancelLocked) {
+                let n = dev
+                    .lock()
+                    .unwrap()
+                    .log
+                    .iter()
+                    .filter(|h| h.command == 117)
+                    .count();
+                ends_at_lock = Some(n);
+            }
+        },
+    );
     assert!(r.is_ok(), "{r:?}");
     assert_eq!(ends_at_lock, Some(0));
 }
@@ -473,4 +495,221 @@ fn final_reconnect_failure_skips_recovery() {
         other => panic!("unexpected {other:?}"),
     }
     only_clean_reboots(&r);
+}
+
+// ---- final-review fixes (F1, F2, F3, F9) ----
+
+/// Firmware whose file name carries version 1.3.0 (the sim device is 1.2.3).
+fn firmware_v130(len: usize) -> Firmware {
+    let mut fw = firmware(len);
+    fw.version = ascent_proto::firmware::file_version("Ascent_Lite_Plus_1_3_0.img");
+    assert!(fw.version.is_some());
+    fw
+}
+
+fn progress(percent: i32) -> UpgradeStatus {
+    UpgradeStatus {
+        percent,
+        status: 2,
+        detail: "OK".into(),
+    }
+}
+
+#[test]
+fn recovery_requires_link_drop() {
+    let fw = firmware(10_000);
+    let mut dev = SimDevice::lite_plus();
+    dev.ignored_reboot_modes = vec!["normal".into()];
+    let r = run_with(dev, &fw, |p, c| {
+        if matches!(p, Progress::Sent { .. }) {
+            c.cancel();
+        }
+    });
+    match &r.result {
+        Err(e @ UpgradeError::Cancelled { recovered: false }) => {
+            assert!(e.recovery_hint().is_some())
+        }
+        other => panic!("unexpected {other:?}"),
+    }
+    // REBOOT normal was sent (and ignored by the device).
+    assert!(reboot_payloads(&r).iter().any(|p| p.starts_with(b"normal")));
+}
+
+#[test]
+fn device_changed_before_clean_reboot_sends_nothing() {
+    let fw = firmware(10_000);
+    let dev = SimDevice::lite_plus();
+    let mut expected = dev.info.clone();
+    expected.firmware = "Ascent_Lite_Plus_1_2_2".into();
+    let r = run_expect(dev, &expected, &fw, &opts(), |_, _| {});
+    match &r.result {
+        Err(e @ UpgradeError::DeviceChanged) => {
+            assert_eq!(
+                e.to_string(),
+                "the connected device changed since you confirmed — nothing was written"
+            );
+            assert!(e.recovery_hint().is_none());
+        }
+        other => panic!("unexpected {other:?}"),
+    }
+    assert_eq!(commands(&r), vec![60]);
+
+    // A different device name is refused the same way.
+    let dev = SimDevice::lite_plus();
+    let mut expected = dev.info.clone();
+    expected.device_name = "ascent_lite".into();
+    let r = run_expect(dev, &expected, &fw, &opts(), |_, _| {});
+    assert!(matches!(r.result, Err(UpgradeError::DeviceChanged)));
+    assert_eq!(commands(&r), vec![60]);
+
+    // So is a device that is not flashable, even if it matches `expected`.
+    let mut dev = SimDevice::lite_plus();
+    dev.info.device_name = "ascent_vrx".into();
+    let r = run_with(dev, &fw, |_, _| {});
+    assert!(matches!(r.result, Err(UpgradeError::DeviceChanged)));
+    assert_eq!(commands(&r), vec![60]);
+}
+
+#[test]
+fn self_reboot_missed_counts_as_success_when_version_changed() {
+    let fw = firmware_v130(10_000);
+    let mut dev = SimDevice::lite_plus();
+    dev.status_script = vec![progress(40)];
+    dev.silent_self_reboot_at_poll = Some(2);
+    dev.firmware_after_self_reboot = Some("Ascent_Lite_Plus_1_3_0".into());
+    let r = run_with(dev, &fw, |_, _| {});
+    let outcome = r.result.as_ref().expect("upgrade ok");
+    assert_eq!(outcome.info.firmware, "Ascent_Lite_Plus_1_3_0");
+    only_clean_reboots(&r);
+    let cmds = commands(&r);
+    // The 100 % status was never seen: two polls, then the reconnect's 60.
+    assert_eq!(&cmds[cmds.len() - 3..], &[118, 118, 60], "{cmds:?}");
+}
+
+#[test]
+fn missed_self_reboot_same_version_is_outcome_unknown() {
+    let fw = firmware_v130(10_000);
+    let mut dev = SimDevice::lite_plus();
+    // Poll 1: 40 %. Poll 2: no reply, self-reboot (same version). The one
+    // status request after the reconnect gets a non-progress answer.
+    dev.status_script = vec![
+        progress(40),
+        UpgradeStatus {
+            percent: 0,
+            status: -7,
+            detail: "".into(),
+        },
+    ];
+    dev.silent_self_reboot_at_poll = Some(2);
+    let r = run_with(dev, &fw, |_, _| {});
+    match &r.result {
+        Err(e @ UpgradeError::OutcomeUnknown { firmware }) => {
+            assert_eq!(firmware, "Ascent_Lite_Plus_1_2_3");
+            assert_eq!(
+                e.to_string(),
+                "flash result unknown — the device now reports Ascent_Lite_Plus_1_2_3"
+            );
+            assert_eq!(
+                e.recovery_hint(),
+                Some("Check the version with `ascent-flash info` (or reopen the app). If it isn't the new version, flash again.")
+            );
+        }
+        other => panic!("unexpected {other:?}"),
+    }
+    only_clean_reboots(&r);
+    let cmds = commands(&r);
+    assert_eq!(&cmds[cmds.len() - 4..], &[118, 118, 60, 118], "{cmds:?}");
+}
+
+#[test]
+fn outcome_unknown_when_status_after_reconnect_is_silent() {
+    let fw = firmware_v130(10_000);
+    let mut dev = SimDevice::lite_plus();
+    dev.status_script = vec![progress(40)];
+    dev.silent_self_reboot_at_poll = Some(2);
+    dev.status_silent_after_self_reboot = true;
+    let r = run_with(dev, &fw, |_, _| {});
+    assert!(
+        matches!(&r.result, Err(UpgradeError::OutcomeUnknown { firmware }) if firmware == "Ascent_Lite_Plus_1_2_3"),
+        "{:?}",
+        r.result
+    );
+    only_clean_reboots(&r);
+    let cmds = commands(&r);
+    // After the reconnect: one status request (plus its same-seq resends),
+    // nothing else.
+    let last_find = cmds.iter().rposition(|&c| c == 60).unwrap();
+    assert!(cmds[last_find - 1] == 118, "{cmds:?}");
+    let tail = &cmds[last_find + 1..];
+    assert!(
+        !tail.is_empty() && tail.iter().all(|&c| c == 118),
+        "{cmds:?}"
+    );
+}
+
+#[test]
+fn unknown_file_version_is_never_success_by_version_alone() {
+    // File version unknown: the reconnect can't prove success, so one status
+    // request decides (here the sim's default 100 %), then the normal verify.
+    let fw = firmware(10_000);
+    let mut dev = SimDevice::lite_plus();
+    dev.status_script = vec![progress(40)];
+    dev.silent_self_reboot_at_poll = Some(2);
+    dev.firmware_after_self_reboot = Some("Ascent_Lite_Plus_1_3_0".into());
+    let r = run_with(dev, &fw, |_, _| {});
+    assert!(r.result.is_ok(), "{:?}", r.result);
+    let cmds = commands(&r);
+    assert_eq!(
+        &cmds[cmds.len() - 5..],
+        &[118, 118, 60, 118, 60],
+        "{cmds:?}"
+    );
+    only_clean_reboots(&r);
+}
+
+#[test]
+fn writing_timeout_returns_outcome_unknown() {
+    let fw = firmware_v130(10_000);
+    let mut dev = SimDevice::lite_plus();
+    dev.status_script = (0..10_000).map(|_| progress(10)).collect();
+    let o = UpgradeOptions {
+        max_status_polls: 100_000,
+        writing_timeout: Duration::from_millis(150),
+        ..opts()
+    };
+    let t = Instant::now();
+    let r = run_opts(dev, &fw, &o, |_, _| {});
+    assert!(t.elapsed() < Duration::from_secs(2), "{:?}", t.elapsed());
+    match &r.result {
+        Err(e @ UpgradeError::OutcomeUnknown { firmware }) => {
+            assert_eq!(firmware, "Ascent_Lite_Plus_1_2_3");
+            assert!(e.recovery_hint().is_some());
+        }
+        other => panic!("unexpected {other:?}"),
+    }
+    only_clean_reboots(&r);
+}
+
+#[test]
+fn io_failure_reconnects_before_recovery_reboot() {
+    let fw = firmware(10_000);
+    let mut dev = SimDevice::lite_plus();
+    // The link breaks after the first chunk; the device stays online.
+    dev.break_link_after_data_chunks = Some(1);
+    let r = run_with(dev, &fw, |_, _| {});
+    match &r.result {
+        Err(UpgradeError::Failed { cause, recovered }) => {
+            assert!(*recovered);
+            assert!(
+                matches!(**cause, UpgradeError::Session(SessionError::Io(_))),
+                "{cause:?}"
+            );
+        }
+        other => panic!("unexpected {other:?}"),
+    }
+    let cmds = commands(&r);
+    let normal = cmds.iter().rposition(|&c| c == 3).unwrap();
+    // A fresh FIND_DEVICE (reconnect) right before REBOOT normal.
+    assert_eq!(cmds[normal - 1], 60, "{cmds:?}");
+    assert!(reboot_payloads(&r).iter().any(|p| p.starts_with(b"normal")));
 }

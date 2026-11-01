@@ -45,6 +45,8 @@ pub fn init(debug: bool) -> WorkerGuard {
         .with(
             fmt::layer()
                 .with_writer(std::io::stderr)
+                // A closed terminal (SIGHUP) must not turn into a panic.
+                .log_internal_errors(false)
                 .with_filter(stderr_filter),
         )
         .init();

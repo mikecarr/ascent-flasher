@@ -107,6 +107,7 @@ dependencies = [
  "tauri",
  "tauri-build",
  "tauri-plugin-dialog",
+ "tracing",
  "tracing-appender",
 ]
 

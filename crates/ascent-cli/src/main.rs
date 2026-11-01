@@ -14,6 +14,24 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
+// Like print!/println!/eprintln!, but write errors are ignored: once the
+// terminal is closed (SIGHUP) a panicking print would abort a running flash.
+macro_rules! out {
+    ($($t:tt)*) => {{
+        let _ = write!(std::io::stdout(), $($t)*);
+    }};
+}
+macro_rules! outln {
+    ($($t:tt)*) => {{
+        let _ = writeln!(std::io::stdout(), $($t)*);
+    }};
+}
+macro_rules! errln {
+    ($($t:tt)*) => {{
+        let _ = writeln!(std::io::stderr(), $($t)*);
+    }};
+}
+
 #[derive(Parser)]
 #[command(
     name = "ascent-flash",
@@ -67,30 +85,30 @@ fn candidates(conn: &dyn Connector) -> std::io::Result<Vec<PortInfo>> {
 
 fn print_device(f: &FoundDevice) {
     let i = &f.info;
-    println!("port: {}", f.port.path);
-    println!("vid_pid: {:04X}:{:04X}", f.port.vid, f.port.pid);
-    println!("usb_serial: {}", f.port.serial.as_deref().unwrap_or("-"));
-    println!("device_name: {}", i.device_name);
-    println!("firmware: {}", i.firmware);
-    println!("hardware_version: {}", i.hardware_version);
-    println!("sdk_version: {}", i.sdk_version);
-    println!("serial_number: {}", i.serial_number);
-    println!("receive_max_size: {}", i.receive_max_size);
-    println!("cpu_temp: {}", i.cpu_temp);
-    println!("status: {}", i.status);
-    println!("detail: {}", i.detail);
+    outln!("port: {}", f.port.path);
+    outln!("vid_pid: {:04X}:{:04X}", f.port.vid, f.port.pid);
+    outln!("usb_serial: {}", f.port.serial.as_deref().unwrap_or("-"));
+    outln!("device_name: {}", i.device_name);
+    outln!("firmware: {}", i.firmware);
+    outln!("hardware_version: {}", i.hardware_version);
+    outln!("sdk_version: {}", i.sdk_version);
+    outln!("serial_number: {}", i.serial_number);
+    outln!("receive_max_size: {}", i.receive_max_size);
+    outln!("cpu_temp: {}", i.cpu_temp);
+    outln!("status: {}", i.status);
+    outln!("detail: {}", i.detail);
     let echo = match f.echoes_seq {
         Some(true) => "yes",
         Some(false) => "no",
         None => "unknown",
     };
-    println!("echoes_seq: {echo}");
-    println!("flashable: {}", if f.is_flashable() { "yes" } else { "no" });
+    outln!("echoes_seq: {echo}");
+    outln!("flashable: {}", if f.is_flashable() { "yes" } else { "no" });
 }
 
 /// Ask a y/N question on stdin; anything but y/yes (or EOF) is No.
 fn confirm(question: &str) -> bool {
-    print!("{question} [y/N] ");
+    out!("{question} [y/N] ");
     let _ = std::io::stdout().flush();
     let mut line = String::new();
     match std::io::stdin().lock().read_line(&mut line) {
@@ -133,14 +151,14 @@ impl ProgressPrinter {
         };
         if self.tty {
             if percent.is_some() {
-                print!("\r{text}   ");
+                out!("\r{text}   ");
                 self.in_percent_line = true;
             } else {
                 if self.in_percent_line {
-                    println!();
+                    outln!();
                     self.in_percent_line = false;
                 }
-                println!("{text}");
+                outln!("{text}");
             }
         } else if let Some(pc) = percent {
             // Plain output: a line per 10% (and the last one), not per chunk.
@@ -149,10 +167,10 @@ impl ProgressPrinter {
                 return;
             }
             self.last_bucket = Some(bucket);
-            println!("{text}");
+            outln!("{text}");
         } else {
             self.last_bucket = None;
-            println!("{text}");
+            outln!("{text}");
         }
         let _ = std::io::stdout().flush();
         self.last = text;
@@ -160,16 +178,16 @@ impl ProgressPrinter {
 
     fn finish_line(&mut self) {
         if self.in_percent_line {
-            println!();
+            outln!();
             self.in_percent_line = false;
         }
     }
 }
 
 fn print_error(e: &UpgradeError) {
-    eprintln!("Error: {e}");
+    errln!("Error: {e}");
     if let Some(h) = e.recovery_hint() {
-        eprintln!("{h}");
+        errln!("{h}");
     }
 }
 
@@ -184,7 +202,7 @@ fn flash(
     for r in find_devices(conn, AckTiming::default()) {
         match r {
             Ok(f) => found.push(f),
-            Err((p, e)) => eprintln!("{}: {e}", p.path),
+            Err((p, e)) => errln!("{}: {e}", p.path),
         }
     }
     if let Some(want) = port {
@@ -196,25 +214,30 @@ fn flash(
         // A single non-flashable device: let preflight explain why.
         (0, 1) => &found[0],
         (0, 0) => {
-            println!("No flashable Ascent device found. Plug in the VTX via USB.");
+            outln!("No flashable Ascent device found. Plug in the VTX via USB.");
             return Ok(2);
         }
         (0, _) => {
-            println!("No flashable Ascent device found. Devices seen:");
+            outln!("No flashable Ascent device found. Devices seen:");
             for f in &found {
-                println!(
+                outln!(
                     "  {}  {:04X}:{:04X}  {}",
-                    f.port.path, f.port.vid, f.port.pid, f.info.device_name
+                    f.port.path,
+                    f.port.vid,
+                    f.port.pid,
+                    f.info.device_name
                 );
             }
             return Ok(2);
         }
         _ => {
-            println!("More than one flashable device found; choose one with --port:");
+            outln!("More than one flashable device found; choose one with --port:");
             for f in &flashable {
-                println!(
+                outln!(
                     "  {}  {}  {}",
-                    f.port.path, f.info.device_name, f.info.firmware
+                    f.port.path,
+                    f.info.device_name,
+                    f.info.firmware
                 );
             }
             return Ok(2);
@@ -224,11 +247,11 @@ fn flash(
     let (fw, warnings) = match preflight(&device.info, file) {
         Ok(x) => x,
         Err(PreflightError::NotFlashable(name)) => {
-            eprintln!("This device ({name}) can't be flashed by this tool.");
+            errln!("This device ({name}) can't be flashed by this tool.");
             return Ok(1);
         }
         Err(e) => {
-            eprintln!("{e}");
+            errln!("{e}");
             return Ok(1);
         }
     };
@@ -237,25 +260,26 @@ fn flash(
     let show = |v: &Option<ascent_proto::firmware::FwVersion>| {
         v.as_ref().map_or("unknown".to_string(), |v| v.to_string())
     };
-    println!(
+    outln!(
         "Device: {} on {}",
-        device.info.device_name, device.port.path
+        device.info.device_name,
+        device.port.path
     );
-    println!("Device version: {}", show(&dev_ver));
-    println!("File: {}", file.display());
-    println!("File version: {}", show(&fw.version));
+    outln!("Device version: {}", show(&dev_ver));
+    outln!("File: {}", file.display());
+    outln!("File version: {}", show(&fw.version));
 
     for w in &warnings {
         let q = warning_question(w);
         if yes {
-            println!("Warning: {q}");
+            outln!("Warning: {q}");
         } else if !confirm(&q) {
-            println!("Aborted.");
+            outln!("Aborted.");
             return Ok(1);
         }
     }
     if !yes && !confirm("Keep USB connected and the VTX powered. Flash now?") {
-        println!("Aborted.");
+        outln!("Aborted.");
         return Ok(1);
     }
 
@@ -269,41 +293,53 @@ fn flash(
     let locked = Arc::new(AtomicBool::new(false));
     {
         // Set once; the handler never exits the process, so recovery can finish.
+        // With ctrlc's `termination` feature this also handles SIGTERM and
+        // SIGHUP (terminal closed), so they get the same cancel/lock handling.
         let (cancel, locked) = (cancel.clone(), locked.clone());
         let installed = ctrlc::set_handler(move || {
             if locked.load(Ordering::SeqCst) {
-                eprintln!("\nDevice is writing firmware — do not unplug (Ctrl-C is ignored now)");
+                errln!("\nDevice is writing firmware — do not unplug (Ctrl-C is ignored now)");
             } else {
                 cancel.cancel();
-                eprintln!("\nCancelling…");
+                errln!("\nCancelling…");
             }
         });
         if let Err(e) = installed {
-            eprintln!("Error: couldn't install the Ctrl-C handler: {e}");
+            errln!("Error: couldn't install the Ctrl-C handler: {e}");
             return Ok(1);
         }
     }
 
     let mut printer = ProgressPrinter::new();
     let slow = cli.simulate && cli.sim_slow;
-    let result = run_upgrade(conn, &device.port, &fw, &opts, &cancel, &mut |p| {
-        if matches!(p, Progress::CancelLocked) {
-            locked.store(true, Ordering::SeqCst);
-        }
-        printer.show(&p);
-        if slow && matches!(p, Progress::Sent { .. }) {
-            std::thread::sleep(Duration::from_millis(400));
-        }
-    });
+    // `device.info` is what the prompt above showed: the upgrade refuses to
+    // start if the device answering now is a different one.
+    let result = run_upgrade(
+        conn,
+        &device.port,
+        &device.info,
+        &fw,
+        &opts,
+        &cancel,
+        &mut |p| {
+            if matches!(p, Progress::CancelLocked) {
+                locked.store(true, Ordering::SeqCst);
+            }
+            printer.show(&p);
+            if slow && matches!(p, Progress::Sent { .. }) {
+                std::thread::sleep(Duration::from_millis(400));
+            }
+        },
+    );
     printer.finish_line();
 
     match result {
         Ok(outcome) => {
             let new_ver = device_version(&outcome.info.firmware);
-            println!("Done — now on {}", show(&new_ver));
+            outln!("Done — now on {}", show(&new_ver));
             if let (Some(n), Some(f)) = (&new_ver, &fw.version) {
                 if n != f {
-                    println!("Warning: device reports {n} but the file was {f}");
+                    outln!("Warning: device reports {n} but the file was {f}");
                 }
             }
             Ok(0)
@@ -331,11 +367,11 @@ fn run(cli: &Cli) -> Result<u8, String> {
         Cmd::List => {
             let ports = candidates(conn.as_ref()).map_err(|e| e.to_string())?;
             if ports.is_empty() {
-                println!("No candidate ports found.");
+                outln!("No candidate ports found.");
                 return Ok(2);
             }
             for p in ports {
-                println!(
+                outln!(
                     "{}  {:04X}:{:04X}  {}",
                     p.path,
                     p.vid,
@@ -353,7 +389,7 @@ fn run(cli: &Cli) -> Result<u8, String> {
                 match r {
                     Ok(f) => ok.push(f),
                     Err((p, e)) => {
-                        eprintln!("{}: {e}", p.path);
+                        errln!("{}: {e}", p.path);
                         failed = true;
                     }
                 }
@@ -361,7 +397,7 @@ fn run(cli: &Cli) -> Result<u8, String> {
             if let Some(want) = port {
                 ok.retain(|f| &f.port.path == want);
                 if ok.is_empty() {
-                    eprintln!("{want}: no Ascent device responded on this port");
+                    errln!("{want}: no Ascent device responded on this port");
                     return Ok(if failed { 1 } else { 2 });
                 }
             }
@@ -369,12 +405,12 @@ fn run(cli: &Cli) -> Result<u8, String> {
                 if failed {
                     return Ok(1);
                 }
-                println!("No Ascent device found. Plug in the VTX via USB.");
+                outln!("No Ascent device found. Plug in the VTX via USB.");
                 return Ok(2);
             }
             for (n, f) in ok.iter().enumerate() {
                 if n > 0 {
-                    println!();
+                    outln!();
                 }
                 print_device(f);
             }
@@ -389,7 +425,7 @@ fn main() -> ExitCode {
     match run(&cli) {
         Ok(code) => ExitCode::from(code),
         Err(e) => {
-            eprintln!("error: {e}");
+            errln!("error: {e}");
             ExitCode::from(1)
         }
     }

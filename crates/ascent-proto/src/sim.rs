@@ -7,6 +7,18 @@
 //! offline (REBOOT, or self-reboot after reporting percent >= 100) breaks every
 //! link that was open at that time (BrokenPipe once buffered replies are
 //! drained), even after the device reappears; reopen via the connector.
+//!
+//! Failure knobs added for the final-review tests:
+//! - `ignored_reboot_modes`: REBOOT requests with these modes are recorded
+//!   but otherwise ignored (the device stays online, the link keeps working).
+//! - `break_link_after_data_chunks`: after that many 116 acks, every open
+//!   link breaks once (BrokenPipe) while the device stays online.
+//! - `silent_self_reboot_at_poll`: the Nth UPGRADE_STATUS gets no reply and
+//!   the device self-reboots (as if 100 % was reported but lost).
+//! - `firmware_after_self_reboot`: firmware string reported after any
+//!   self-reboot (silent or after percent >= 100).
+//! - `status_silent_after_self_reboot`: after a self-reboot, UPGRADE_STATUS
+//!   gets no reply (a device back in normal mode).
 
 use crate::command::Command;
 use crate::frame::{encode_ack, Header, HEADER_LEN};
@@ -44,6 +56,13 @@ pub struct SimDevice {
     /// If set, the offline time for the self-reboot after percent >= 100
     /// (instead of `offline_for`).
     pub self_reboot_offline_for: Option<Duration>,
+    pub ignored_reboot_modes: Vec<String>,
+    pub break_link_after_data_chunks: Option<u32>,
+    pub silent_self_reboot_at_poll: Option<u32>,
+    pub firmware_after_self_reboot: Option<String>,
+    pub status_silent_after_self_reboot: bool,
+    status_polls: u32,
+    self_rebooted: bool,
     chunks_acked: u32,
     ignored_any: bool,
     path: String,
@@ -78,6 +97,13 @@ impl Default for SimDevice {
             unplug_after_data_chunks: None,
             ignore_until_find_device: None,
             self_reboot_offline_for: None,
+            ignored_reboot_modes: Vec::new(),
+            break_link_after_data_chunks: None,
+            silent_self_reboot_at_poll: None,
+            firmware_after_self_reboot: None,
+            status_silent_after_self_reboot: false,
+            status_polls: 0,
+            self_rebooted: false,
             chunks_acked: 0,
             ignored_any: false,
             path: String::new(),
@@ -119,6 +145,18 @@ impl SimDevice {
         }
     }
 
+    /// The device reboots itself after writing the firmware.
+    fn self_reboot(&mut self) {
+        self.self_rebooted = true;
+        self.go_offline();
+        if let Some(d) = self.self_reboot_offline_for {
+            self.offline_until = Some(Instant::now() + d);
+        }
+        if let Some(fw) = &self.firmware_after_self_reboot {
+            self.info.firmware = fw.clone();
+        }
+    }
+
     /// Process one request; returns reply bytes if any.
     fn handle(&mut self, h: Header, payload: Vec<u8>) -> Option<Vec<u8>> {
         self.log.push(h);
@@ -151,9 +189,12 @@ impl SimDevice {
                     .iter()
                     .position(|&b| b == 0)
                     .unwrap_or(payload.len());
-                self.reboot_modes
-                    .push(String::from_utf8_lossy(&payload[..end]).into_owned());
-                self.go_offline();
+                let mode = String::from_utf8_lossy(&payload[..end]).into_owned();
+                let ignored = self.ignored_reboot_modes.contains(&mode);
+                self.reboot_modes.push(mode);
+                if !ignored {
+                    self.go_offline();
+                }
                 None
             }
             c if c == Command::FindDevice.id() => ack(&self.info.encode()),
@@ -173,6 +214,9 @@ impl SimDevice {
                     self.gone = true;
                     self.epoch += 1;
                 }
+                if self.break_link_after_data_chunks == Some(self.chunks_acked) {
+                    self.epoch += 1;
+                }
                 reply
             }
             c if c == Command::SendFileEnd.id() => {
@@ -180,6 +224,14 @@ impl SimDevice {
                 ack(&fd(0, 0, &d))
             }
             c if c == Command::UpgradeStatus.id() => {
+                if self.self_rebooted && self.status_silent_after_self_reboot {
+                    return None;
+                }
+                self.status_polls += 1;
+                if self.silent_self_reboot_at_poll == Some(self.status_polls) {
+                    self.self_reboot();
+                    return None;
+                }
                 let st = if self.status_script.is_empty() {
                     UpgradeStatus {
                         percent: 100,
@@ -191,10 +243,7 @@ impl SimDevice {
                 };
                 let reply = ack(&st.encode());
                 if st.percent >= 100 {
-                    self.go_offline();
-                    if let Some(d) = self.self_reboot_offline_for {
-                        self.offline_until = Some(Instant::now() + d);
-                    }
+                    self.self_reboot();
                 }
                 reply
             }
