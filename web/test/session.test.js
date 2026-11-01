@@ -206,3 +206,12 @@ test("session log records learned seq echo and FIND_DEVICE reply", async () => {
   assert.ok(lines.some((l) => l.includes("echoes seq: true")), lines.join("\n"));
   assert.ok(lines.some((l) => l.includes("FIND_DEVICE reply") && l.includes("ascent_lite_plus")), lines.join("\n"));
 });
+
+test("throwing log does not break a request", async () => {
+  const clock = new VirtualClock();
+  const c = new SimConnector(clock, "/dev/sim0", 0x1234, 0x5678);
+  const [port] = await c.list();
+  const s = new Session(await c.open(port), clock, { log: () => { throw new Error("log broke"); } });
+  const info = await s.findDevice();
+  assert.equal(info.deviceName, "ascent_lite_plus");
+});

@@ -42,8 +42,15 @@ export class Session {
     this.clock = clock;
     this.resendMs = resendMs;
     this.giveUpMs = giveUpMs;
-    this.log = log;
-    this.reader = new FrameReader((m) => log(`warn: ${m}`));
+    // A throwing logger must not break a request.
+    this.log = (m) => {
+      try {
+        log(m);
+      } catch {
+        // ignored
+      }
+    };
+    this.reader = new FrameReader((m) => this.log(`warn: ${m}`));
     this.seq = 1;
     /** Whether the device echoes the request seq: null until the first reply. */
     this.echoesSeq = null;

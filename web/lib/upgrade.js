@@ -193,6 +193,7 @@ export function sameDevice(p, like) {
  * passed (measured after the delay). Only connector.list() is used.
  */
 export async function reconnect({ connector, like, delayMs, timeoutMs, retryMs, clock, sessionOpts = {}, log = () => {} }) {
+  log = guardLog(log);
   log(`reconnecting (delay ${delayMs} ms, timeout ${timeoutMs} ms)`);
   await clock.sleep(delayMs);
   const deadline = clock.now() + timeoutMs;
@@ -242,6 +243,17 @@ const isProgress = (st) => st.status >= 0 && st.status <= 3 && st.percent >= 0 &
 const sameVersion = (a, b) => a != null && b != null && compareVersions(a, b) === 0;
 
 const CANCELLED = Symbol("cancelled");
+
+/** A log callback that can never throw into the caller. */
+export function guardLog(log) {
+  return (m) => {
+    try {
+      log(m);
+    } catch {
+      // a broken logger must not change the flash
+    }
+  };
+}
 
 class Upgrade {
   constructor({ connector, port, firmware, expected, model, cancel, onProgress, clock, opts, log }) {
@@ -626,6 +638,16 @@ export async function runUpgrade({
   connector, port, firmware, expected, model, cancel = new CancelToken(), onProgress = () => {},
   clock = realClock, options = {}, log = () => {},
 }) {
+  // UI callbacks can never change the state machine: a throw is logged and ignored.
+  log = guardLog(log);
+  const progress = onProgress;
+  onProgress = (p) => {
+    try {
+      progress(p);
+    } catch (e) {
+      log(`warn: progress callback threw (${e?.message ?? e}); ignored`);
+    }
+  };
   log(`starting upgrade on ${port.id} with ${firmware.name}`);
   if (firmware.bytes.length > 0xffffffff) throw new UpgradeError("fileTooLarge", { size: firmware.bytes.length });
   const opts = upgradeOptions(port, model, options);

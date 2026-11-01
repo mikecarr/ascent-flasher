@@ -34,7 +34,7 @@ const progress = (percent) => ({ percent, status: 2, detail: "OK" });
  * Run an upgrade against a fresh sim. `expected` defaults to the device's own
  * firmware string and `model` to the device's model (as the page would pass).
  */
-async function run(devOpts, fw, { hook = () => {}, options, expected, model } = {}) {
+async function run(devOpts, fw, { hook = () => {}, options, expected, model, log } = {}) {
   const clock = new VirtualClock();
   const conn = new SimConnector(clock, PATH, VID, PID, devOpts);
   const [port] = await conn.list();
@@ -58,7 +58,7 @@ async function run(devOpts, fw, { hook = () => {}, options, expected, model } = 
       },
       clock,
       options,
-      log: (m) => logLines.push(m),
+      log: log ?? ((m) => logLines.push(m)),
     });
   } catch (e) {
     error = e;
@@ -480,4 +480,29 @@ test("error messages and hints match the app", () => {
   const failed = new UpgradeError("failed", { cause: new UpgradeError("reconnect"), recovered: false });
   assert.equal(failed.message, "could not reconnect to the device");
   assert.ok(failed.hint);
+});
+
+test("throwing onProgress on every emit still completes the flash", async () => {
+  const r = await run({}, firmware(10_000), { hook: () => { throw new Error("ui broke"); } });
+  const outcome = expectOk(r);
+  assert.equal(outcome.firmware, "Ascent_Lite_Plus_1_2_3");
+  assert.deepEqual(commands(r), [60, 3, 60, 114, 115, 116, 116, 116, 117, 118, 60]);
+  onlyCleanReboots(r);
+  assert.ok(r.logLines.some((l) => l.includes("progress callback threw")), "throw is logged");
+});
+
+test("throwing log still completes the flash", async () => {
+  const r = await run({}, firmware(10_000), { log: () => { throw new Error("log broke"); } });
+  expectOk(r);
+  assert.deepEqual(commands(r), [60, 3, 60, 114, 115, 116, 116, 116, 117, 118, 60]);
+  onlyCleanReboots(r);
+});
+
+test("throwing onProgress and log together still complete the flash", async () => {
+  const r = await run({}, firmware(10_000), {
+    hook: () => { throw new Error("ui broke"); },
+    log: () => { throw new Error("log broke"); },
+  });
+  expectOk(r);
+  onlyCleanReboots(r);
 });
