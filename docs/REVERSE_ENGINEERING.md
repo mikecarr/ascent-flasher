@@ -124,6 +124,15 @@ First flash of the Lite+ by any of our tools. Log (same page session, after the 
 
 - Result: the Lite+ is marked `confirmed` in `web/lib/models.js`.
 
+### Lite flashed through the web page on macOS (2026-11-01, Chrome 156, 18.21.10 → 18.21.10)
+
+Log (same page session, after the Lite+): [hardware-logs/2026-11-01-lite-web-flash-macos.txt](hardware-logs/2026-11-01-lite-web-flash-macos.txt).
+
+- Same timeline as the Lite+: back after the clean reboot and the self-reboot at the first try after the 11.5 s wait; 15.6 MB in 3.3 s; SENDFILE_END reply 0.43 s; 38 → 59 → 79 → 79 → 100 % in 5 s; ~32 s from Flash to "Flash complete".
+- **On 18.21.10 the Lite reports more than it did on 17.5.8:** serial number `1_2843` (was empty) and hardware `FPV-Ascent-Sky-482-V1.3-1.1` (was `…-1.0`).
+- Its clean mode now keeps a real cpu temp (58); the 0 °C seen in the October cancel test was on 17.5.8.
+- The Lite stays unconfirmed in `web/lib/models.js` until the same flash passes on Windows (the spec requires macOS and Windows before the first public deploy).
+
 ## 3. Ascent ("AR"/Artosyn) serial protocol — the main one
 
 Used by all Ascent goggles, VRX, VTX and the GM V2 gimbals.
