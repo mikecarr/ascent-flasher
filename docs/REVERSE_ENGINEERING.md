@@ -197,7 +197,29 @@ WinForms with the AntdUI controls. UI strings live in `resource/language/{en-US,
 - §2–§3 came from static decompilation. The Ascent upgrade flow has since been **confirmed on real hardware**; see "Confirmed by a real flash" below.
 - ~~Chunk size above 5 KB~~ **Resolved:** `receiveMaxSize` is in bytes (1048576), and 1 MiB chunks are accepted.
 - Recovery after a cancel (REBOOT "normal" from clean/upgrade mode) has not been exercised on hardware yet.
-- An Artosyn macOS build of the original tool exists (`CaddxPcTool.app` v1.1.6, Qt, `com.artosyn.CaddxPcTool`). Its strings confirm `OTRA`, `/tmp/pc`, `clean`, MD5, an `^[A-Za-z0-9_]+(_\d+)+\.img$` filename check, and that it refuses a lower target version (equal is OK). It also has a separate "divim_sky" flow, used only for `Ascent_R_Sky_` firmware (app + FPGA sub-images).
+## 9. macOS tool (Artosyn `CaddxPcTool.app` v1.1.6) compared with the Windows tool (Caddx v2.2.9)
+
+How this was examined: Ghidra headless decompile of the arm64 slice, plus `nm` symbols (C++ class and method names are intact). Static analysis only. The tool was not run.
+
+| Aspect | macOS (Artosyn, Qt 6, `com.artosyn.CaddxPcTool`, Developer ID-signed Sept 2025, Gatekeeper-rejected) | Windows (Caddx, .NET 4.8 WinForms) |
+|---|---|---|
+| Scope | Firmware upgrade, plus a Settings page (log viewer, language, "send text to device") | Upgrade, gimbal, RC mode, Cam Hub, BB-freq table, CLI, PDF manuals, Velopack self-update |
+| Device detection | USB **manufacturer string "artosyn"** (case-insensitive) **or** VID `0x1D6B–0x1D77` | VID table `0x1D6B–0x1D84` plus `0x1A86` (gimbal); WMI-based |
+| Device names | `setting.ini` → `[Devices Name]` keyed `0x<vid>` (the file isn't shipped, so this lookup is always empty) | Device-name/firmware-string resolver (§2) |
+| Wire protocol | Same `OTRA` 36-byte header, CRC-32, commands 3/60/114–118 | Same |
+| Ack matching | Tracks acks **by seq** (map of outstanding seqs; logs "ACK check failed for seq") | V1 by command; V2 by command + seq |
+| Unsolicited frames | Accepts **cmd 0** frames with a `0xFFFFFFFF` marker as an upgrade-status notification | Not handled |
+| PC → device ack | Has `sendAckResponse(seq)`: type-2 frame, **cmd 1000 (0x3E8)**, format 2. Present but no caller found | None |
+| Upgrade flow | REBOOT "clean" → wait for reconnect → file info → 116 chunks of `segLength` (= FIND_DEVICE `receiveMaxSize`) → 117 → poll 118, with a "RESEND retry" path | Same |
+| Version policy | **Refuses** a target lower than current (`VERSION_ERR`); equal is OK. Filename must match `^[A-Za-z0-9_]+(_\d+)+\.img$`, with a prefix/segment-count check against the device | Warns on downgrade and lets the user continue; name mismatch is a warning |
+| Multi-part images | `divim_sky` flow for **`Ascent_R_Sky_`** packages, which split into sub-images by name (uboot/bootloader, env, uimage/kernel, factory, rootfs, usrdata) with `16M`/`32M` size tags, plus app/FPGA parts | Not present |
+| Secrets / extra handshake | None found: no keys, no encryption, no vendor unlock | None |
+
+**Conclusion:** the Caddx Windows tool is the Artosyn reference protocol with Caddx features added on top. Nothing Caddx-specific is needed to flash an Ascent VTX. Two things worth adopting:
+- **Manufacturer-string detection:** a device whose USB manufacturer string is "artosyn" can be accepted even with an unlisted VID.
+- **Optional strict downgrade refusal:** refuse a lower target version outright, as the Mac tool does.
+
+Our tool doesn't support the `Ascent_R_Sky_` multi-part flow; it would need its own reverse-engineering pass.
 
 ### Confirmed by a real flash (2026-10-31, `Ascent_H_Sky_17_5_8.img` re-flashed to the same version)
 
