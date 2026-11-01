@@ -10,6 +10,15 @@ use std::sync::OnceLock;
 
 const MAX_PATH_CHARS: usize = 200;
 
+/// Largest firmware file accepted (Ascent firmware is ~10-20 MB).
+pub const MAX_FIRMWARE_BYTES: u64 = 64 * 1024 * 1024;
+
+/// Device-side directory for the uploaded file (`/tmp/pc/<basename>`).
+pub const REMOTE_DIR: &str = "/tmp/pc/";
+
+/// The remote path goes into a 128-byte field that must keep a NUL.
+const MAX_REMOTE_PATH_BYTES: usize = 127;
+
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct FwVersion {
     pub major: u32,
@@ -147,6 +156,22 @@ pub enum PreflightError {
     Unreadable(std::io::Error),
     #[error("firmware file is empty")]
     Empty,
+    #[error("firmware file is too large ({} MB) — Ascent firmware is ~10–20 MB", size / 1_000_000)]
+    TooLarge { size: u64 },
+    #[error("rename the file to a shorter ASCII name, e.g. Ascent_H_Sky_18_21_10.img")]
+    BadFileName,
+}
+
+/// Whether the file's basename can be sent as `/tmp/pc/<basename>`:
+/// printable ASCII, and the whole remote path fits the 128-byte field with
+/// its NUL terminator.
+fn remote_name_ok(path: &Path) -> bool {
+    let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
+        return false;
+    };
+    !name.is_empty()
+        && name.bytes().all(|b| (0x20..=0x7E).contains(&b))
+        && REMOTE_DIR.len() + name.len() <= MAX_REMOTE_PATH_BYTES
 }
 
 pub fn preflight(
@@ -165,9 +190,25 @@ pub fn preflight(
     if !is_img {
         return Err(PreflightError::NotImg);
     }
+    if !remote_name_ok(path) {
+        return Err(PreflightError::BadFileName);
+    }
+    // Size check BEFORE reading, so a huge file is never loaded.
+    let size = std::fs::metadata(path)
+        .map_err(PreflightError::Unreadable)?
+        .len();
+    if size > MAX_FIRMWARE_BYTES {
+        return Err(PreflightError::TooLarge { size });
+    }
     let bytes = std::fs::read(path).map_err(PreflightError::Unreadable)?;
     if bytes.is_empty() {
         return Err(PreflightError::Empty);
+    }
+    // The file may have changed since the metadata check.
+    if bytes.len() as u64 > MAX_FIRMWARE_BYTES {
+        return Err(PreflightError::TooLarge {
+            size: bytes.len() as u64,
+        });
     }
     let md5_hex = Md5::digest(&bytes)
         .iter()

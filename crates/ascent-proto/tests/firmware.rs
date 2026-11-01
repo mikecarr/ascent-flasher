@@ -175,3 +175,66 @@ fn preflight_md5() {
     let (fw, _) = preflight(&info("Ascent_lite", FW), &p).unwrap();
     assert_eq!(fw.md5_hex, "900150983cd24fb0d6963f7d28e17f72");
 }
+
+#[test]
+fn preflight_rejects_oversize() {
+    let d = tempfile::tempdir().unwrap();
+    let p = d.path().join("Ascent_H_Sky_17_6_0.img");
+    let f = std::fs::File::create(&p).unwrap();
+    // Sparse: takes no disk space, and preflight must not read it.
+    f.set_len(64 * 1024 * 1024 + 1).unwrap();
+    drop(f);
+    let r = preflight(&info("Ascent_lite", FW), &p);
+    match r {
+        Err(e @ PreflightError::TooLarge { size }) => {
+            assert_eq!(size, 64 * 1024 * 1024 + 1);
+            assert_eq!(
+                e.to_string(),
+                "firmware file is too large (67 MB) — Ascent firmware is ~10–20 MB"
+            );
+        }
+        other => panic!("unexpected {other:?}"),
+    }
+    // Exactly 64 MiB is accepted.
+    let f = std::fs::OpenOptions::new().write(true).open(&p).unwrap();
+    f.set_len(64 * 1024 * 1024).unwrap();
+    drop(f);
+    assert!(preflight(&info("Ascent_lite", FW), &p).is_ok());
+}
+
+#[test]
+fn preflight_rejects_long_file_name() {
+    let d = tempfile::tempdir().unwrap();
+    let dev = info("Ascent_lite", FW);
+    // "/tmp/pc/" (8) + 119 = 127 bytes: fits with the NUL.
+    let ok_name = format!("{}_17_6_0.img", "A".repeat(119 - 11));
+    assert_eq!(ok_name.len(), 119);
+    let ok = write(&d, &ok_name, b"x");
+    assert!(preflight(&dev, &ok).is_ok());
+    // One byte more: 128 bytes, no room for the NUL.
+    let long_name = format!("{}_17_6_0.img", "A".repeat(120 - 11));
+    let long = write(&d, &long_name, b"x");
+    match preflight(&dev, &long) {
+        Err(e @ PreflightError::BadFileName) => assert_eq!(
+            e.to_string(),
+            "rename the file to a shorter ASCII name, e.g. Ascent_H_Sky_18_21_10.img"
+        ),
+        other => panic!("unexpected {other:?}"),
+    }
+}
+
+#[test]
+fn preflight_rejects_non_ascii_file_name() {
+    let d = tempfile::tempdir().unwrap();
+    let dev = info("Ascent_lite", FW);
+    let p = write(&d, "Ascent_H_Sky_17_6_0_é.img", b"x");
+    assert!(matches!(
+        preflight(&dev, &p),
+        Err(PreflightError::BadFileName)
+    ));
+    let p = write(&d, "Ascent\tH_Sky_17_6_0.img", b"x");
+    assert!(matches!(
+        preflight(&dev, &p),
+        Err(PreflightError::BadFileName)
+    ));
+}
