@@ -122,6 +122,19 @@ pub enum Warning {
     UnknownVersion,
 }
 
+/// Plain-words text for a warning (no trailing question), shared by the CLI and GUI.
+pub fn warning_text(w: &Warning) -> String {
+    match w {
+        Warning::Downgrade { from, to } => format!(
+            "The file ({to}) is older than the device ({from}). Downgrading usually fails."
+        ),
+        Warning::NameMismatch { expected } => format!(
+            "This file name doesn't look like firmware for this device (expected '{expected}' in the name)."
+        ),
+        Warning::UnknownVersion => "Couldn't read a version from the file name.".to_string(),
+    }
+}
+
 #[derive(Debug, thiserror::Error)]
 pub enum PreflightError {
     #[error("device {0:?} is not a flashable Ascent model")]

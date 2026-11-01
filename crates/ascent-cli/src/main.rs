@@ -1,5 +1,5 @@
 use ascent_proto::discovery::{find_devices, is_candidate, FoundDevice};
-use ascent_proto::firmware::{device_version, preflight, PreflightError, Warning};
+use ascent_proto::firmware::{device_version, preflight, warning_text, PreflightError, Warning};
 use ascent_proto::serial::SerialConnector;
 use ascent_proto::sim::{SimConnector, SimDevice};
 use ascent_proto::upgrade::{
@@ -100,17 +100,7 @@ fn confirm(question: &str) -> bool {
 }
 
 fn warning_question(w: &Warning) -> String {
-    match w {
-        Warning::Downgrade { from, to } => format!(
-            "The file ({to}) is older than the device ({from}). Downgrading usually fails. Continue?"
-        ),
-        Warning::NameMismatch { expected } => format!(
-            "This file name doesn't look like firmware for this device (expected '{expected}' in the name). Continue?"
-        ),
-        Warning::UnknownVersion => {
-            "Couldn't read a version from the file name. Continue?".to_string()
-        }
-    }
+    format!("{} Continue?", warning_text(w))
 }
 
 /// Prints progress: one line per change; `\r` updates for percentages on a TTY.

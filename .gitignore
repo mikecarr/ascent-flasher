@@ -5,3 +5,5 @@
 node_modules/
 .DS_Store
 reference/
+app/src-tauri/target/
+app/src-tauri/gen/

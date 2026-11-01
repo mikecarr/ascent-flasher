@@ -1,4 +1,3 @@
 [workspace]
-# app/src-tauri is added in Task 9 once it exists.
-members = ["crates/*"]
+members = ["crates/*", "app/src-tauri"]
 resolver = "2"
