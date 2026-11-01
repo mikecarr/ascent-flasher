@@ -194,7 +194,23 @@ WinForms with the AntdUI controls. UI strings live in `resource/language/{en-US,
 
 ## 8. Unverified / open questions
 
-- Everything above comes from static decompilation. **No traffic was captured from a real device.**
-- Whether the device accepts data chunks larger than ~5 KB in practice: the PC caps *received* frames at 5120 bytes, but sends chunks of `receiveMaxSize` (units unclear; the UI labels it "kb").
+- §2–§3 came from static decompilation. The Ascent upgrade flow has since been **confirmed on real hardware**; see "Confirmed by a real flash" below.
+- ~~Chunk size above 5 KB~~ **Resolved:** `receiveMaxSize` is in bytes (1048576), and 1 MiB chunks are accepted.
+- Recovery after a cancel (REBOOT "normal" from clean/upgrade mode) has not been exercised on hardware yet.
+- An Artosyn macOS build of the original tool exists (`CaddxPcTool.app` v1.1.6, Qt, `com.artosyn.CaddxPcTool`). Its strings confirm `OTRA`, `/tmp/pc`, `clean`, MD5, an `^[A-Za-z0-9_]+(_\d+)+\.img$` filename check, and that it refuses a lower target version (equal is OK). It also has a separate "divim_sky" flow, used only for `Ascent_R_Sky_` firmware (app + FPGA sub-images).
+
+### Confirmed by a real flash (2026-10-31, `Ascent_H_Sky_17_5_8.img` re-flashed to the same version)
+
+| Step | Observed |
+|---|---|
+| FIND_DEVICE | reply in 50–125 ms |
+| REBOOT "clean" | no ack; the device re-enumerated on the **same path and VID:PID**; FIND_DEVICE answered at the first try after the 11.5 s delay |
+| REMOTE_UPGRADE (114) | ack in 1 ms (68-byte payload) |
+| SENDFILE_START (115) | ack in 2 ms |
+| SENDFILE_DATA (116) | 11 chunks: 10 × 1 MiB plus the remainder. Each acked in ~170 ms (~6 MB/s); no resends; `cursize` cumulative |
+| SENDFILE_END (117) | reply in 350 ms: `{length 0, cursize 11509044, totalsize 11509044, status 0, "OK"}` |
+| UPGRADE_STATUS (118) | polled at 1 s: 38 % → 79 % → 79 % → 100 %. Status 2 (IN_PROGRESS) while writing, 3 (DONE) at the end; detail empty |
+| self-reboot | back after the 11.5 s wait; FIND_DEVICE reported `Ascent_H_Sky_17_5_8` |
+| totals | about 30 s end to end; no CRC warnings; seq echoed on every reply |
 - The exact format of `fpv_bb_freq.bin`, and whether 120 replies with cmd 120 or 116 (the code handles both).
 - The firmware container format (`.img` for Ascent, `.bin` for gimbals). The device validates it (board type, version, CRC); the PC sends it as-is.
