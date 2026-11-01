@@ -7,6 +7,10 @@ use crate::upgrade::UpgradeError;
 use std::time::{Duration, Instant};
 
 /// USB vendor IDs that may be an Ascent device.
+///
+/// 0x1D7C–0x1D7F are deliberately excluded: this mirrors the original
+/// tool's VID table, which jumps from 0x1D7B (VRX EX2) to 0x1D80 (JoyStick)
+/// with no entries in between (docs/REVERSE_ENGINEERING.md §2).
 pub fn is_candidate(vid: u16) -> bool {
     matches!(vid, 0x1D6B..=0x1D7B | 0x1D80..=0x1D84)
 }
