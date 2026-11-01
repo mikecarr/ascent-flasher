@@ -13,7 +13,10 @@ class FakePort {
     this.openArgs = null;
     this.openError = null;
     this.closed = false;
-    this.#fresh();
+    this.isOpen = false;
+    this.readable = null;
+    this.writable = null;
+    this.writes = [];
   }
   #fresh() {
     this.readable = new ReadableStream({ start: (c) => (this.ctl = c) });
@@ -23,12 +26,21 @@ class FakePort {
   }
   async open(opts) {
     if (this.openError) throw this.openError;
+    if (this.isOpen) throw new DOMException("already open", "InvalidStateError");
+    this.isOpen = true;
+    this.closed = false;
     this.openArgs = opts;
-    this.writes = [];
-    this.writable = new WritableStream({ write: (c) => void this.writes.push(c) });
+    this.#fresh();
+    this.writable = new WritableStream({ write: this.sink ?? ((c) => void this.writes.push(c)) });
   }
   async close() {
+    if (this.readable?.locked || this.writable?.locked) {
+      throw new DOMException("streams locked", "InvalidStateError");
+    }
+    this.isOpen = false;
     this.closed = true;
+    this.readable = null;
+    this.writable = null;
   }
   push(bytes) {
     this.ctl.enqueue(bytes);
@@ -159,14 +171,48 @@ test("fatal read errors and a closed stream become LinkGoneError", async () => {
 test("write failure after the device leaves is LinkGoneError", async () => {
   const p = new FakePort();
   const link = await openLink(p);
-  p.writable = null;
   const bad = await openLink(Object.assign(new FakePort(), {
-    async open() {
-      this.writable = new WritableStream({ write() { throw new DOMException("gone", "NetworkError"); } });
-    },
+    sink() { throw new DOMException("gone", "NetworkError"); },
   }));
   await assert.rejects(bad.write(Uint8Array.of(1)), LinkGoneError);
   await link.close();
+});
+
+test("open, read, close, reopen, read works (reboot path)", async () => {
+  const p = new FakePort();
+  const s = new FakeSerial([p]);
+  const c = new WebSerialConnector(s);
+  const [info] = await c.list();
+  const l1 = await c.open(info);
+  p.push(Uint8Array.of(1));
+  assert.deepEqual([...(await l1.read(50))], [1]);
+  await l1.close();
+  assert.ok(p.closed);
+  const l2 = await c.open(info);
+  p.push(Uint8Array.of(2));
+  assert.deepEqual([...(await l2.read(50))], [2]);
+  await l2.close();
+  assert.ok(p.closed);
+});
+
+test("close while a read is pending rejects it with LinkGoneError and closes the port", async () => {
+  const p = new FakePort();
+  const link = await openLink(p);
+  const r = link.read(5000);
+  const assertion = assert.rejects(r, LinkGoneError);
+  await new Promise((res) => setTimeout(res, 5));
+  await link.close();
+  await assertion;
+  assert.ok(p.closed);
+});
+
+test("close finishes even when a write never completes", async () => {
+  const p = Object.assign(new FakePort(), { sink: () => new Promise(() => {}) });
+  const link = await openLink(p);
+  void link.write(Uint8Array.of(1)).catch(() => {});
+  await new Promise((res) => setTimeout(res, 5));
+  await link.close();
+  assert.ok(p.closed);
 });
 
 // ---- watcher ----

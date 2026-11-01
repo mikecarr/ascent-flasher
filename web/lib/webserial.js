@@ -13,6 +13,8 @@ export const BUSY_MESSAGE = "The VTX is in use by another app or tab — close i
 const NON_FATAL_READ_ERRORS = new Set(["BreakError", "FramingError", "BufferOverrunError", "ParityError"]);
 /** Consecutive non-fatal errors without any data before we call the link gone. */
 const MAX_NON_FATAL_IN_A_ROW = 50;
+/** Upper bound for each awaited step of Link.close(). */
+const CLOSE_STEP_MS = 2000;
 
 // A port's id is stable for as long as the same SerialPort object exists.
 const portIds = new WeakMap();
@@ -41,7 +43,12 @@ class WebSerialLink {
     this.buf = [];
     this.pending = null; // in-flight reader.read(), kept across timeouts
     this.writer = port.writable.getWriter();
-    this.reader = port.readable.getReader();
+    try {
+      this.reader = port.readable.getReader();
+    } catch (e) {
+      this.writer.releaseLock();
+      throw e;
+    }
   }
 
   async write(bytes) {
@@ -112,16 +119,23 @@ class WebSerialLink {
   async close() {
     if (this.closed) return;
     this.closed = true;
-    for (const step of [
-      () => this.reader.cancel(),
+    // Never await anything that can wait on the device: a stalled write would
+    // otherwise hang close (and the watcher pause / flash reconnect behind it).
+    const bounded = (p) => Promise.race([p, new Promise((r) => setTimeout(r, CLOSE_STEP_MS))]);
+    const steps = [
+      () => bounded(this.reader.cancel()),
       () => this.reader.releaseLock(),
+      () => {
+        this.writer.abort().catch(() => {}); // not awaited: waits for an in-flight write
+      },
       () => this.writer.releaseLock(),
-      () => this.port.close(),
-    ]) {
+      () => bounded(this.port.close()),
+    ];
+    for (const step of steps) {
       try {
         await step();
-      } catch {
-        // best effort
+      } catch (e) {
+        this.log(`close step failed: ${e?.message ?? e}`);
       }
     }
   }
