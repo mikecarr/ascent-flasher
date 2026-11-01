@@ -2,10 +2,64 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
     <title>Ascent Flasher (unofficial)</title>
+    <link rel="stylesheet" href="style.css" />
   </head>
   <body>
-    <h1>Ascent Flasher (unofficial)</h1>
-    <p>UI coming in Task 10</p>
+    <main class="app">
+      <header class="head">
+        <h1>Ascent Flasher</h1>
+        <span class="tag">unofficial</span>
+      </header>
+
+      <section class="card device" id="device" aria-label="Device">
+        <div class="device-top">
+          <span class="dot" id="dot" aria-hidden="true"></span>
+          <div class="device-id">
+            <div class="device-name" id="dev-name">Plug in your Ascent device</div>
+            <div class="device-port" id="dev-port"></div>
+          </div>
+        </div>
+        <div class="note" id="dev-note" hidden></div>
+        <dl class="grid" id="dev-grid" hidden>
+          <div><dt>FW</dt><dd id="dev-fw">–</dd></div>
+          <div><dt>HW</dt><dd id="dev-hw">–</dd></div>
+          <div><dt>SN</dt><dd id="dev-sn">–</dd></div>
+          <div><dt>°C</dt><dd id="dev-temp">–</dd></div>
+        </dl>
+      </section>
+
+      <div class="drop" id="drop" role="button" tabindex="0" aria-describedby="drop-text">
+        <svg class="drop-icon" viewBox="0 0 24 24" width="28" height="28" aria-hidden="true">
+          <path d="M12 16V4m0 0L7 9m5-5l5 5M5 20h14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <div id="drop-text">Drop firmware .img here, or click to choose</div>
+      </div>
+
+      <button class="primary" id="flash" type="button" disabled>Flash firmware</button>
+
+      <div class="progress-wrap" id="progress-wrap" hidden>
+        <div class="bar" id="bar" role="progressbar" aria-label="Flash progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+          <div class="fill" id="fill"></div>
+        </div>
+      </div>
+      <div class="status" id="status" role="status" aria-live="polite"></div>
+
+      <section class="result" id="result" hidden>
+        <div class="result-title" id="result-title"></div>
+        <div class="result-msg" id="result-msg"></div>
+        <div class="result-hint" id="result-hint" hidden></div>
+        <button class="secondary" id="again" type="button">Flash again</button>
+      </section>
+    </main>
+
+    <script>
+      if (!window.__TAURI__) {
+        document.write('<script src="dev-mock.js"><\/script>');
+      }
+    </script>
+    <script src="main.js"></script>
   </body>
 </html>
