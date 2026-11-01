@@ -9,6 +9,7 @@ import { runUpgrade, CancelToken, progressText, UpgradeError } from "./lib/upgra
 import { WebSerialConnector, requestDevice, DeviceWatcher } from "./lib/webserial.js";
 import { SessionLog } from "./lib/session-log.js";
 import { FlashGuards } from "./lib/guards.js";
+import { makeAsk } from "./lib/confirm.js";
 
 const HOST = location.hostname;
 const log = new SessionLog();
@@ -453,27 +454,20 @@ async function syncFile() {
 
 // ---- Confirm dialog --------------------------------------------------------
 
-function ask(title, text, okLabel) {
-  return new Promise((resolve) => {
+const askDialog = makeAsk({
+  dialog: el.ask,
+  form: el.ask.querySelector("form"),
+  show: ({ title, text, okLabel }) => {
     el.askTitle.textContent = title;
     el.askText.textContent = text;
     el.askOk.textContent = okLabel;
-    el.ask.returnValue = "";
-    const form = el.ask.querySelector("form");
-    // Answer from the button press itself: Chromium fires "close" on an
-    // animation frame, which a tab that isn't being painted never runs.
-    const settle = (ok) => {
-      form.removeEventListener("submit", onSubmit);
-      el.ask.removeEventListener("close", onClose);
-      resolve(ok);
-    };
-    const onSubmit = (e) => settle(e.submitter?.value === "ok");
-    const onClose = () => settle(el.ask.returnValue === "ok"); // Escape
-    form.addEventListener("submit", onSubmit);
-    el.ask.addEventListener("close", onClose);
-    el.ask.showModal();
-    el.askCancel.focus(); // the safe choice is the default
-  });
+  },
+});
+
+async function ask(title, text, okLabel) {
+  const answer = askDialog({ title, text, okLabel });
+  el.askCancel.focus(); // the safe choice is the default
+  return answer;
 }
 
 // ---- Flash -----------------------------------------------------------------

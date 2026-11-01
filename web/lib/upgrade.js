@@ -32,7 +32,7 @@ import { realClock } from "./clock.js";
 export const MAX_CHUNK = 1_048_576;
 
 const RECOVERY_HINT = "Power-cycle the VTX (unplug USB and battery). If it doesn't return to normal, recover it with the Caddx Windows tool.";
-const OUTCOME_UNKNOWN_HINT = "Check the version with `ascent-flash info` (or reopen the app). If it isn't the new version, flash again.";
+const OUTCOME_UNKNOWN_HINT = "Leave it powered for a minute, then press Info to check which version it reports. If it doesn't answer, power-cycle it (unplug USB and battery).";
 const EMPTY = new Uint8Array(0);
 
 export const Phase = Object.freeze({

@@ -354,7 +354,7 @@ test("missedSelfRebootSameVersionIsOutcomeUnknown", async () => {
   const e = expectError(r, "outcomeUnknown");
   assert.equal(e.firmware, "Ascent_Lite_Plus_1_2_3");
   assert.equal(e.message, "flash result unknown — the device now reports Ascent_Lite_Plus_1_2_3");
-  assert.equal(e.hint, "Check the version with `ascent-flash info` (or reopen the app). If it isn't the new version, flash again.");
+  assert.equal(e.hint, "Leave it powered for a minute, then press Info to check which version it reports. If it doesn't answer, power-cycle it (unplug USB and battery).");
   onlyCleanReboots(r);
   const cmds = commands(r);
   assert.deepEqual(cmds.slice(-4), [118, 118, 60, 118], `${cmds}`);
