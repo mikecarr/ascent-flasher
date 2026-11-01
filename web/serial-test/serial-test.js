@@ -6,6 +6,9 @@ import {
   CMD, FrameReader, decodeDeviceInfo, encodeRequest, rebootPayload,
 } from "../lib/protocol.js";
 
+// Imports resolved: the "script didn't load" note can go.
+document.getElementById("load-error").hidden = true;
+
 /** Only these device names may be sent the test reboot (as in the app). */
 function isLiteFamily(name) {
   const n = name.toLowerCase();

@@ -1,4 +1,5 @@
 <!doctype html>
+<!-- Serve the web/ folder and open /serial-test/ (this page imports ../lib/protocol.js). -->
 <html lang="en">
 <head>
   <meta charset="utf-8">
@@ -11,6 +12,7 @@
     <h1>Ascent Serial Test <span class="tag">unofficial</span></h1>
     <p class="lede">Checks whether Chrome can talk to an Ascent VTX and reconnect to it after it reboots into upgrade mode. This page never sends firmware.</p>
 
+    <p id="load-error" class="warn">The page script didn't load. Serve the <code>web/</code> folder (not <code>web/serial-test/</code>) and open <code>/serial-test/</code>.</p>
     <p id="unsupported" class="warn" hidden>This browser has no Web Serial. Use desktop Chrome or Edge.</p>
 
     <section class="card">
