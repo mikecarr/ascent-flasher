@@ -236,3 +236,10 @@ Our tool doesn't support the `Ascent_R_Sky_` multi-part flow; it would need its 
 | totals | about 30 s end to end; no CRC warnings; seq echoed on every reply |
 - The exact format of `fpv_bb_freq.bin`, and whether 120 replies with cmd 120 or 116 (the code handles both).
 - The firmware container format (`.img` for Ascent, `.bin` for gimbals). The device validates it (board type, version, CRC); the PC sends it as-is.
+
+## 10. Firmware image format and newer releases
+
+- **`.img` container:** it begins with the magic `ASW\0`, followed by a small partition/section table. Contents: a gzipped `u-boot.bin`, then a UBI root filesystem. From 18.x onward it also includes a kernel/device-tree (FIT) section. The PC sends the file unchanged; the device parses it.
+- **Device OS:** Linux. Its U-Boot config is `console=ttyAMA0,115200`.
+- **NAND layout:** A/B (dual-bank), with `fpvbsel` selecting the bank: `512K(boot),512K(env),1M(sel),4M(kernel0),4M(kernel1),6M(factory),16M(rootfs0),16M(rootfs1),32M(usrdata0),32M(usrdata1)`. **`factory` probably holds per-unit RF calibration. Never erase it.**
+- **V18.21.10 (2026-08):** the package ships the same Windows installer (PC Tool 2.2.9, byte-identical to the one analyzed here), so the upgrade protocol is unchanged. Release notes: it adds Lite+ air-unit support, allows updates on USB power alone, and stops daemon logging to NAND (cited as a possible bricking cause). `Ascent_H_Sky_18_21_10.img` is 15.6 MB, MD5 `b78373e21b0131bd0c4864269ba1025b`, and has the same NAND layout as 17.5.8.
