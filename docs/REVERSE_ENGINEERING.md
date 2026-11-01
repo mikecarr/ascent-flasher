@@ -58,6 +58,29 @@ None of these are needed to talk to the device.
 - **Seq echo:** the device echoes the request seq in its ack (`echoes_seq = yes`).
 - **Reopen delay:** the original would wait 11500 ms for this device, because it keys the delay on VID 0x1D76.
 
+### Observed on real hardware (2026-11-01, user's **Ascent Lite+ VTX**, macOS)
+
+`ascent-flash info` output, compared with the Lite:
+
+| Field | Lite+ | Lite |
+|---|---|---|
+| port | `/dev/cu.usbmodemCX241` | `/dev/cu.usbmodemCX201` |
+| VID:PID | `1D76:0101` | `1D76:0101` (same) |
+| USB serial | `CX24` | `CX20` |
+| devicename | `Ascent_lite_plus` | `Ascent_lite` |
+| firmwareInfo | `Ascent_H_Sky_18_21_10` (already on 18.21.10) | `Ascent_H_Sky_17_5_8` at the time |
+| hardwareVersion | `FPV-Ascent-Sky-472-V1.3-1.1` | `FPV-Ascent-Sky-482-V1.3-1.0` |
+| serialNumber | `1_0106` | empty |
+| sdkversion | empty | empty |
+| receiveMaxSize | `1048576` | `1048576` |
+| cputemp | 54 | 48 |
+| status / detail | 0 / `OK` | 0 / `OK` |
+
+- **Same firmware family:** both report `H_Sky`, so the single `Ascent_H_Sky_*.img` covers the Lite and the Lite+ (confirms the inference in §10).
+- **Same USB ID**, so the same 11.5 s reopen delay applies. The port name depends on the USB serial, so it differs per unit; the tool finds the device by VID/PID.
+- **Seq echo:** yes, as on the Lite.
+- Not flashed yet (it was already on the latest firmware).
+
 ## 3. Ascent ("AR"/Artosyn) serial protocol — the main one
 
 Used by all Ascent goggles, VRX, VTX and the GM V2 gimbals.
@@ -262,4 +285,4 @@ The cancel is only checked between steps, so it can take up to the 11.5 s reconn
 - **Device OS:** Linux. Its U-Boot config is `console=ttyAMA0,115200`.
 - **NAND layout:** A/B (dual-bank), with `fpvbsel` selecting the bank: `512K(boot),512K(env),1M(sel),4M(kernel0),4M(kernel1),6M(factory),16M(rootfs0),16M(rootfs1),32M(usrdata0),32M(usrdata1)`. **`factory` probably holds per-unit RF calibration. Never erase it.**
 - **V18.21.10 (2026-08):** the package ships the same Windows installer (PC Tool 2.2.9, byte-identical to the one analyzed here), so the upgrade protocol is unchanged. Release notes: it adds Lite+ air-unit support, allows updates on USB power alone, and stops daemon logging to NAND (cited as a possible bricking cause). `Ascent_H_Sky_18_21_10.img` is 15.6 MB, MD5 `b78373e21b0131bd0c4864269ba1025b`, and has the same NAND layout as 17.5.8.
-- **One air-unit image for both models:** V18.21.10 ships a single air-unit image (`Ascent_H_Sky_*`) and lists Lite+ support as new. The likely inference is that this one image covers both the Lite and the Lite+. That's unconfirmed: check the Lite+'s `info` output (`devicename`, `firmwareInfo`, VID:PID) before flashing it. All hardware results above come from the **Lite**.
+- **One air-unit image for both models:** V18.21.10 ships a single air-unit image (`Ascent_H_Sky_*`) and lists Lite+ support as new. The likely inference is that this one image covers both the Lite and the Lite+. **Confirmed 2026-11-01:** the Lite+ reports `Ascent_lite_plus` with firmware `Ascent_H_Sky_18_21_10` and the same VID:PID as the Lite (see §2). The flash and cancel results above come from the **Lite**; the Lite+ has only been read so far.
