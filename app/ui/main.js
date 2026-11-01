@@ -204,7 +204,8 @@
         const ok = await dialog.ask(w.text, { title: "Warning", kind: "warning" });
         if (!ok) return;
       }
-      const go = await dialog.ask("Keep USB connected and the VTX powered. Flash now?", {
+      const vrxPro = String(s.device.name).toLowerCase() === "ascent_vrx_pro" ? " The VRX Pro needs its own power (DC barrel, 2–6S) during the update; USB-C carries data only." : "";
+      const go = await dialog.ask(`Keep USB connected and the VTX powered.${vrxPro} Flash now?`, {
         title: "Flash firmware",
       });
       if (!go) return;

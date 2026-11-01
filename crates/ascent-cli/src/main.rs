@@ -117,6 +117,16 @@ fn confirm(question: &str) -> bool {
     }
 }
 
+/// The final flash question; the VRX Pro also needs its own power.
+fn flash_prompt(device_name: &str) -> String {
+    let power = if device_name.eq_ignore_ascii_case("ascent_vrx_pro") {
+        " The VRX Pro needs its own power (DC barrel, 2–6S) during the update; USB-C carries data only."
+    } else {
+        ""
+    };
+    format!("Keep USB connected and the VTX powered.{power} Flash now?")
+}
+
 fn warning_question(w: &Warning) -> String {
     format!("{} Continue?", warning_text(w))
 }
@@ -278,7 +288,7 @@ fn flash(
             return Ok(1);
         }
     }
-    if !yes && !confirm("Keep USB connected and the VTX powered. Flash now?") {
+    if !yes && !confirm(&flash_prompt(&device.info.device_name)) {
         outln!("Aborted.");
         return Ok(1);
     }
@@ -428,5 +438,22 @@ fn main() -> ExitCode {
             errln!("error: {e}");
             ExitCode::from(1)
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::flash_prompt;
+
+    #[test]
+    fn flash_prompt_adds_the_vrx_pro_power_note() {
+        assert_eq!(
+            flash_prompt("ascent_lite_plus"),
+            "Keep USB connected and the VTX powered. Flash now?"
+        );
+        assert_eq!(
+            flash_prompt("Ascent_VRX_Pro"),
+            "Keep USB connected and the VTX powered. The VRX Pro needs its own power (DC barrel, 2–6S) during the update; USB-C carries data only. Flash now?"
+        );
     }
 }
