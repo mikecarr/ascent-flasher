@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { VirtualClock } from "../lib/clock.js";
 import { LinkGoneError, PortBusyError } from "../lib/link.js";
-import { SimConnector } from "../lib/sim.js";
+import { SimConnector, SimBus } from "../lib/sim.js";
 import { CMD } from "../lib/protocol.js";
 import { WebSerialConnector, DeviceWatcher, requestDevice } from "../lib/webserial.js";
 
@@ -297,4 +297,15 @@ test("watcher survives a throwing onChange and log", async () => {
   await w.tick();
   c.device.gone = true;
   await w.tick();
+});
+
+test("watcher prefers any flashable model, VRX Pro included, over another Ascent unit", async () => {
+  const clock = new VirtualClock();
+  const other = new SimConnector(clock, "/dev/sim0", 0x1d76, 0x0103, { info: { deviceName: "ascent_mystery" } });
+  const vrx = new SimConnector(clock, "/dev/sim1", 0x1d77, 0x0102, { info: { deviceName: "ascent_vrx_pro" } });
+  const changes = [];
+  const w = new DeviceWatcher(new SimBus(other, vrx), clock, (v) => changes.push(v));
+  await w.tick();
+  assert.equal(changes.length, 1);
+  assert.equal(changes[0].info.deviceName, "ascent_vrx_pro");
 });

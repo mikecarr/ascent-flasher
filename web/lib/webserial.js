@@ -2,7 +2,7 @@
 // watcher (port of spawn_watcher/should_probe in app/src-tauri/src/state.rs).
 // Nothing here touches the DOM or navigator at import time.
 import { LinkGoneError, PortBusyError } from "./link.js";
-import { CANDIDATE_VIDS, isCandidateVid } from "./models.js";
+import { CANDIDATE_VIDS, isCandidateVid, modelFor } from "./models.js";
 import { Session } from "./session.js";
 import { guardLog } from "./upgrade.js";
 
@@ -210,7 +210,7 @@ export async function requestDevice(serial = globalThis.navigator?.serial) {
   }
 }
 
-const isFlashableName = (n) => ["ascent_lite", "ascent_lite_plus"].includes(String(n).toLowerCase());
+const isFlashableName = (n) => modelFor(n) !== null;
 const setKey = (ports) => ports.map((p) => `${p.id}:${p.vid}:${p.pid}`).sort().join("|");
 const viewKey = (v) => (v ? `${v.port.id}\n${JSON.stringify(v.info)}` : "");
 
